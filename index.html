@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Camera alert test</title><body>Loading...<script>
+Promise.all(['1-index.html','app.js'].map(u=>fetch(u+'?v=2').then(r=>r.text()))).then(([h,a])=>{
+var m=h.match(/<body>([\s\S]*?)<script src/)[1];var st=h.match(/<style>([\s\S]*?)<\/style>/)[1];
+document.head.insertAdjacentHTML('beforeend','<style>'+st+'</style>');document.body.innerHTML=m;(0,eval)(a);});
+</script></body>
