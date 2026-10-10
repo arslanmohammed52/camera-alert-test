@@ -69,6 +69,7 @@ async function init() {
     const fs = { wasmLoaderPath: new URL('./5-vision_wasm_internal.js', location.href).href, wasmBinaryPath: new URL('./7-vision_wasm_internal.wasm', location.href).href };
     const opt = d => ({ baseOptions: { modelAssetPath: new URL('./6-pose.task', location.href).href, delegate: d }, runningMode: 'IMAGE', numPoses: 6, minPoseDetectionConfidence: 0.3, minPosePresenceConfidence: 0.3, minTrackingConfidence: 0.3 });
     try { pl = await PoseLandmarker.createFromOptions(fs, opt('GPU')); window.__delegate = 'GPU'; } catch (e) { pl = await PoseLandmarker.createFromOptions(fs, opt('CPU')); window.__delegate = 'CPU'; }
+    try { pdet = await MPV.ObjectDetector.createFromOptions(window.__fs, { baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/latest/efficientdet_lite0.tflite', delegate: 'CPU' }, runningMode: 'IMAGE', scoreThreshold: 0.3, maxResults: 30, categoryAllowlist: ['person'] }); window.__pgate = 'on'; } catch (e) { pdet = null; window.__pgate = 'off ' + e; }
     window.__model = 'ready'; setStatus('Ready. Camera start karo.'); $('start').disabled = false; $('file').disabled = false;
   } catch (e) { window.__model = 'fail ' + e; setStatus('Model load fail: ' + (e && e.message || e)); }
 }
@@ -77,14 +78,28 @@ function passes(W, H, zoom, far) {
   if (far) { const deep = $('deep').checked, n = deep ? 3 : 2, f = deep ? 0.4 : 0.6, tw = rw * f, th = rh * f; for (let ix = 0; ix < n; ix++) for (let iy = 0; iy < n; iy++) list.push({ x: rx + ix * (rw - tw) / (n - 1), y: ry + iy * (rh - th) / (n - 1), w: tw, h: th, edge: [ix === 0, iy === 0, ix === n - 1, iy === n - 1].map(Number) }); }
   return list;
 }
+let pdet = null;
+function gateOK(lm, pts, boxes, tw, th) {
+  const vis = pts.filter(p => p.v > 0.6).length, vp = pts.filter(p => p.v > 0.5); if (vis < 8) return false;
+  const sh = [pts[11], pts[12]], hp = [pts[23], pts[24]]; if (sh[0].v < 0.5 || sh[1].v < 0.5) return false;
+  const sw = Math.hypot((sh[0].tx - sh[1].tx) * tw, (sh[0].ty - sh[1].ty) * th), mh = { x: (hp[0].tx + hp[1].tx) / 2 * tw, y: (hp[0].ty + hp[1].ty) / 2 * th }, ms = { x: (sh[0].tx + sh[1].tx) / 2 * tw, y: (sh[0].ty + sh[1].ty) / 2 * th };
+  const tl = Math.hypot(mh.x - ms.x, mh.y - ms.y); if (sw < 4 || tl / sw < 0.35 || tl / sw > 4.5) return false;
+  const xs = vp.map(p => p.tx * tw), ys = vp.map(p => p.ty * th), bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys); if (bh / Math.max(bw, 1) < 0.25 && bw / Math.max(bh, 1) < 0.25) return false;
+  if (!pdet) return true;
+  const cx = (ms.x + mh.x) / 2, cy = (ms.y + mh.y) / 2;
+  if (boxes.some(b => cx > b.x1 && cx < b.x2 && cy > b.y1 && cy < b.y2)) return true;
+  return vis >= 14 && bh > th * 0.5 && false;
+}
 function detectAll(W, H, zoom, far) {
   const found = [];
   for (const P of passes(W, H, zoom, far)) {
     tile.width = Math.round(Math.min(960, Math.max(P.w, 480))); tile.height = Math.round(tile.width * P.h / P.w);
     tctx.drawImage(v, P.x, P.y, P.w, P.h, 0, 0, tile.width, tile.height);
     const res = pl.detect(tile);
+    let pboxes = []; if (pdet) { try { pboxes = pdet.detect(tile).detections.map(d => ({ x1: d.boundingBox.originX - 0.05 * d.boundingBox.width, y1: d.boundingBox.originY - 0.05 * d.boundingBox.height, x2: d.boundingBox.originX + 1.05 * d.boundingBox.width, y2: d.boundingBox.originY + 1.05 * d.boundingBox.height })); } catch (e) {} }
     for (const lm of (res.landmarks || [])) {
       const pts = lm.map(q => ({ x: (P.x + q.x * P.w) / W, y: (P.y + q.y * P.h) / H, v: q.visibility ?? 1, tx: q.x, ty: q.y }));
+      if (!gateOK(lm, pts, pboxes, tile.width, tile.height)) continue;
       const torso = [11, 12, 23, 24].map(i => pts[i]).filter(p => p.v > 0.4); if (torso.length < 2) continue;
       const cx = torso.reduce((a, p) => a + p.tx, 0) / torso.length, cy = torso.reduce((a, p) => a + p.ty, 0) / torso.length, m = 0.04;
       if ((cx < m && !P.edge[0]) || (cx > 1 - m && !P.edge[2]) || (cy < m && !P.edge[1]) || (cy > 1 - m && !P.edge[3])) continue;
