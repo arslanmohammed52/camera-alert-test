@@ -140,9 +140,9 @@ function step(ts) {
 function loop() {
   const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy) return;
     if (v.ended) { stopAll('Clip khatam.'); return; }
-    busy = true; let p;
+    busy = true; let p; const tq = performance.now();
     try { const md = $('mode').value; if ($('light').checked && Date.now() - (window.__lastStep || 0) < 450) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : step(performance.now())); } catch (e) { busy = false; return; }
-    const tq = performance.now(); p.then(out => { busy = false; if (!out) return; autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
+    p.then(out => { busy = false; if (!out) return; autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
   };
   raf = requestAnimationFrame(tick);
 }
