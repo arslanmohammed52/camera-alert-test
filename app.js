@@ -80,15 +80,15 @@ function passes(W, H, zoom, far) {
 }
 let pdet = null;
 function gateOK(lm, pts, boxes, tw, th) {
-  const vis = pts.filter(p => p.v > 0.6).length, vp = pts.filter(p => p.v > 0.5); if (vis < 8) return false;
-  const sh = [pts[11], pts[12]], hp = [pts[23], pts[24]]; if (sh[0].v < 0.5 || sh[1].v < 0.5) return false;
+  const vis = pts.filter(p => p.v > 0.6).length, vp = pts.filter(p => p.v > 0.5); window.__g = window.__g || { in: 0, kv: 0, kp: 0, kd: 0 }; window.__g.in++; if (vis < 5) { window.__g.kv++; return false; }
+  const sh = [pts[11], pts[12]], hp = [pts[23], pts[24]]; if (sh[0].v < 0.4 || sh[1].v < 0.4) { window.__g.kv++; return false; }
   const sw = Math.hypot((sh[0].tx - sh[1].tx) * tw, (sh[0].ty - sh[1].ty) * th), mh = { x: (hp[0].tx + hp[1].tx) / 2 * tw, y: (hp[0].ty + hp[1].ty) / 2 * th }, ms = { x: (sh[0].tx + sh[1].tx) / 2 * tw, y: (sh[0].ty + sh[1].ty) / 2 * th };
-  const tl = Math.hypot(mh.x - ms.x, mh.y - ms.y); if (sw < 4 || tl / sw < 0.35 || tl / sw > 4.5) return false;
+  const tl = Math.hypot(mh.x - ms.x, mh.y - ms.y); if (sw < 3 || tl / sw < 0.3 || tl / sw > 5) { window.__g.kp++; return false; }
   const xs = vp.map(p => p.tx * tw), ys = vp.map(p => p.ty * th), bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys); if (bh / Math.max(bw, 1) < 0.25 && bw / Math.max(bh, 1) < 0.25) return false;
   if (!pdet) return true;
   const cx = (ms.x + mh.x) / 2, cy = (ms.y + mh.y) / 2;
   if (boxes.some(b => cx > b.x1 && cx < b.x2 && cy > b.y1 && cy < b.y2)) return true;
-  return vis >= 14 && bh > th * 0.5 && false;
+  window.__g.kd++; return false;
 }
 function detectAll(W, H, zoom, far) {
   const found = [];
