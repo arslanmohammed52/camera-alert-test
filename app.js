@@ -60,7 +60,7 @@ const LABEL = { none: 'Koi insaan nahi dikha', calm: 'Shaant', active: 'Koi tez 
 const det = new Detector(); let pl = null, stream = null, raf = 0, running = false, busy = false, al = { on: false, start: 0, cool: 0 };
 const v = $('v'), o = $('o'), ctx = o.getContext('2d'); const tile = document.createElement('canvas'), tctx = tile.getContext('2d');
 function setStatus(t) { $('status').textContent = t; }
-$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far" checked> Door ke log mode (zyada tiles, thoda slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="40" value="10"></label><p id="fps" style="color:#666"></p>');
+$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far" checked> Door ke log mode (zyada tiles, thoda slow)</label></p><p><label><input type="checkbox" id="deep"> Bahut door (9 tiles, bahut slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="40" value="10"></label><p id="fps" style="color:#666"></p>');
 $('zoom').oninput = () => { $('zv').textContent = (+$('zoom').value / 10).toFixed(1) + 'x'; };
 async function init() {
   try {
@@ -74,7 +74,7 @@ async function init() {
 }
 function passes(W, H, zoom, far) {
   const rw = W / zoom, rh = H / zoom, rx = (W - rw) / 2, ry = (H - rh) / 2, list = [{ x: rx, y: ry, w: rw, h: rh, edge: [1, 1, 1, 1] }];
-  if (far) { const tw = rw * 0.6, th = rh * 0.6; for (const ix of [0, 1]) for (const iy of [0, 1]) list.push({ x: rx + ix * (rw - tw), y: ry + iy * (rh - th), w: tw, h: th, edge: [ix === 0, iy === 0, ix === 1, iy === 1].map(Number) }); }
+  if (far) { const deep = $('deep').checked, n = deep ? 3 : 2, f = deep ? 0.4 : 0.6, tw = rw * f, th = rh * f; for (let ix = 0; ix < n; ix++) for (let iy = 0; iy < n; iy++) list.push({ x: rx + ix * (rw - tw) / (n - 1), y: ry + iy * (rh - th) / (n - 1), w: tw, h: th, edge: [ix === 0, iy === 0, ix === n - 1, iy === n - 1].map(Number) }); }
   return list;
 }
 function detectAll(W, H, zoom, far) {
