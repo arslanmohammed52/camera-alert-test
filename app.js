@@ -112,15 +112,17 @@ function detectAll(W, H, zoom, far) {
   return keep;
 }
 let actx = null;
-function unlockAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); const s = actx.createBufferSource(); s.buffer = actx.createBuffer(1, 1, 22050); s.connect(actx.destination); s.start(0); } catch (e) {} }
-function beep() {
-  try { navigator.vibrate && navigator.vibrate([500, 150, 500, 150, 500]); } catch (e) {}
-  if (!$('snd').checked || !actx) return;
-  try { actx.resume(); const t0 = actx.currentTime, dur = 5, comp = actx.createDynamicsCompressor(), g = actx.createGain(); g.gain.value = 1.0; comp.connect(g); g.connect(actx.destination);
-    for (const type of ['square', 'sawtooth']) { const o = actx.createOscillator(); o.type = type; const og = actx.createGain(); og.gain.value = type === 'square' ? 0.7 : 0.5; o.connect(og); og.connect(comp);
-      for (let k = 0; k < dur / 0.4; k++) { o.frequency.setValueAtTime(k % 2 ? 1250 : 700, t0 + k * 0.4); o.frequency.linearRampToValueAtTime(k % 2 ? 700 : 1250, t0 + k * 0.4 + 0.38); }
-      o.start(t0); o.stop(t0 + dur); }
-    window.__sirenAt = Date.now(); } catch (e) { window.__sirenErr = String(e); }
+let sAudio = null, sOn = false, sMute = 0, sTimer = 0;
+function makeWav() { const sr = 22050, dur = 2, n = sr * dur, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, t) => { for (let i = 0; i < t.length; i++) d.setUint8(o + i, t.charCodeAt(i)); }; w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, sr, true); d.setUint32(28, sr * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
+  let ph = 0; for (let i = 0; i < n; i++) { const t = i / sr, on = (t % 0.2) < 0.11, x = (ph += 2 * Math.PI * 2900 / sr); const sq = Math.sign(Math.sin(x)) * 0.75 + Math.sin(x) * 0.25; d.setInt16(44 + i * 2, on ? Math.max(-1, Math.min(1, sq)) * 32000 : 0, true); } return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); }
+function unlockAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); const s = actx.createBufferSource(); s.buffer = actx.createBuffer(1, 1, 22050); s.connect(actx.destination); s.start(0); } catch (e) {}
+  try { if (!sAudio) { sAudio = new Audio(makeWav()); sAudio.loop = true; sAudio.preload = 'auto'; } sAudio.volume = 0; const p = sAudio.play(); if (p && p.then) p.then(() => { if (!sOn) { sAudio.pause(); sAudio.currentTime = 0; } sAudio.volume = 1; window.__audioOk = true; }).catch(e => { window.__audioErr = String(e); }); } catch (e) { window.__audioErr = String(e); } }
+function sirenUI() { let b = document.getElementById('ack'); if (!b) { document.body.insertAdjacentHTML('beforeend', '<button id="ack" type="button" hidden style="position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:18px;font-size:20px;background:#d00;color:#fff;border:0;border-radius:12px">SIREN BAND KARO (maine dekh liya)</button>'); b = document.getElementById('ack'); b.onclick = () => stopSiren(15000); } return b; }
+function stopSiren(muteMs) { sOn = false; sMute = Date.now() + (muteMs || 0); try { sAudio && sAudio.pause(); } catch (e) {} clearTimeout(sTimer); sirenUI().hidden = true; }
+function beep() { try { navigator.vibrate && navigator.vibrate([500, 150, 500, 150, 500]); } catch (e) {}
+  if (!$('snd').checked || sOn || Date.now() < sMute) return; sOn = true; sirenUI().hidden = false; window.__sirenAt = Date.now(); sTimer = setTimeout(() => stopSiren(0), 90000);
+  try { if (sAudio) { sAudio.volume = 1; const p = sAudio.play(); if (p && p.catch) p.catch(e => { window.__audioErr = String(e); setStatus('Siren block hua (' + (e.name || e) + '). Phone ka volume/silent switch dekho aur Siren test dabao.'); }); } } catch (e) { window.__sirenErr = String(e); }
+  try { if (actx) { actx.resume(); const t0 = actx.currentTime, dur = 4, g = actx.createGain(); g.gain.value = 0.8; g.connect(actx.destination); const o2 = actx.createOscillator(); o2.type = 'square'; o2.frequency.value = 2900; const bg = actx.createGain(); o2.connect(bg); bg.connect(g); for (let k = 0; k < dur / 0.2; k++) { bg.gain.setValueAtTime(1, t0 + k * 0.2); bg.gain.setValueAtTime(0, t0 + k * 0.2 + 0.11); } o2.start(t0); o2.stop(t0 + dur); } } catch (e) { window.__sirenErr = String(e); }
 }
 function step(ts) {
   if (v.readyState < 2 || !v.videoWidth) return null;
@@ -151,10 +153,11 @@ function handle(out) {
   if (r.alert) { if (!al.on) { al.on = true; al.start = Date.now(); beep(); if (!out.helmet) addEvidence('Maar-peet jaisi movement (pose alert)', null, true); } al.cool = 0; lvl = 'alert'; }
   else if (al.on && ++al.cool > (out.helmet ? 3 : 8)) { al.on = false; if (!out.helmet) { const li = document.createElement('li'); li.textContent = new Date(al.start).toLocaleTimeString() + ' par, ' + Math.max(1, Math.round((Date.now() - al.start) / 1000)) + ' sec'; $('log').prepend(li); $('nolog').hidden = true; } }
   else if (al.on) lvl = 'alert';
+  if (out.fresh) beep();
   $('cam').className = 'cam ' + (lvl === 'alert' ? 'alert' : '');
   $('badge').textContent = out.text || (LABEL[lvl] + (r.count ? ' (' + r.count + ' log)' : '')); $('badge').hidden = false;
 }
-function stopAll(msg) { running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
+function stopAll(msg) { try { stopSiren(0); } catch (e) {} running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
 $('start').onclick = async () => {
   unlockAudio(); if (running) return stopAll();
   try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: $('light').checked ? 640 : 1280 }, height: { ideal: $('light').checked ? 360 : 720 } }, audio: false });
@@ -162,7 +165,7 @@ $('start').onclick = async () => {
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
 $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch { setStatus('Ye video play nahi hua.'); } e.target.value = ''; };
-$('sens').parentElement.insertAdjacentHTML('afterend', '<p><button id="tsiren" type="button">Siren test (volume max karo)</button></p>'); $('tsiren').onclick = () => { unlockAudio(); beep(); };
+$('sens').parentElement.insertAdjacentHTML('afterend', '<p><button id="tsiren" type="button">Siren test (volume max karo)</button></p>'); $('tsiren').onclick = () => { unlockAudio(); stopSiren(0); setTimeout(beep, 150); };
 window.__step = step; window.__det = det; window.__v = v;
 
 // ---- Helmet + number plate mode (private concept test) ----
@@ -248,14 +251,20 @@ let vdet = null, vInit = null; const tracks = []; let nextTid = 1, cal = null, c
 $('mode').insertAdjacentHTML('beforeend', '<option value="traffic">Traffic: gaadi + speed</option>');
 $('start').insertAdjacentHTML('afterend', '<button id="flip" type="button" style="margin-left:6px;background:#555">Camera badlo (front/back)</button><label class="btn" style="background:#555;margin-left:6px">Gallery se photo<input id="photo" type="file" accept="image/*" style="display:none"></label>');
 $('front').parentElement.insertAdjacentHTML('afterend', '<label><input type="checkbox" id="light"> Light mode (purana phone / CCTV: chhota resolution, kam fps)</label>');
-$('cam').insertAdjacentHTML('afterend', '<div id="tpanel" hidden style="background:#eef;padding:8px;border-radius:8px;margin:8px 0;font-size:14px"><b>Traffic setup</b><br>Speed limit (km/h): <input id="lim" type="number" value="40" style="width:60px"> <label><input type="checkbox" id="govt"> Class-wise reference limits (car 70, bike 60, truck/bus 60; user ne bataye, official nahi, khud verify karo)</label><br>Road par 2 jagah ke beech asli doori (meter): <input id="cdist" type="number" value="10" style="width:60px"> <button id="calb" type="button">Calibrate: 2 point tap karo</button> <span id="calst">Calibrate nahi hua (speed nahi dikhegi)</span></div><h3>Evidence (sirf is phone me)</h3><ul id="evl" style="padding-left:0;list-style:none"></ul>');
+$('cam').insertAdjacentHTML('afterend', '<div id="tpanel" hidden style="background:#eef;padding:8px;border-radius:8px;margin:8px 0;font-size:14px"><b>Traffic setup</b><br>Speed limit (km/h): <input id="lim" type="number" value="40" style="width:60px"> <label><input type="checkbox" id="govt"> Class-wise reference limits (car 70, bike 60, truck/bus 60; user ne bataye, official nahi, khud verify karo)</label><br>Line 1 (camera ke paas, road par): asli doori <input id="cdist" type="number" value="10" style="width:55px"> m <button id="calb" type="button">Line 1: 2 point tap</button><br>Line 2 (door, optional - perspective sahi karne ke liye): asli doori <input id="cdist2" type="number" value="10" style="width:55px"> m <button id="calb2" type="button">Line 2: 2 point tap</button><br><span id="calst">Calibrate nahi hua (speed nahi dikhegi)</span></div><h3>Evidence (sirf is phone me)</h3><ul id="evl" style="padding-left:0;list-style:none"></ul>');
 function showPanel() { $('tpanel').hidden = $('mode').value !== 'traffic'; }
 $('mode').addEventListener('change', () => { showPanel(); if ($('mode').value === 'traffic') initTraffic().catch(() => {}); });
 function initTraffic() { if (vInit) return vInit; vInit = (async () => { setStatus('Gaadi detector load ho raha hai...'); const M = window.__mpv, opt = d => ({ baseOptions: { modelAssetPath: EFFDET_URL, delegate: d }, runningMode: 'IMAGE', scoreThreshold: 0.4, maxResults: 25, categoryAllowlist: ['car', 'truck', 'bus', 'motorcycle', 'bicycle'] });
   try { vdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('GPU')); } catch (e) { vdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('CPU')); } setStatus('Traffic mode ready.'); })().catch(e => { vInit = null; setStatus('Traffic load fail: ' + e); throw e; }); return vInit; }
-$('calb').onclick = () => { calPts = []; calOn = true; o.style.pointerEvents = 'auto'; $('calst').textContent = 'Video par road ka pehla point tap karo'; };
+const cals = [null, null]; let calIdx = 0;
+function startCal(i) { calIdx = i; calPts = []; calOn = true; o.style.pointerEvents = 'auto'; $('calst').textContent = 'Line ' + (i + 1) + ': pehla point tap karo (video par)'; }
+$('calb').onclick = () => startCal(0); $('calb2').onclick = () => startCal(1);
+function calText() { const c = cals.filter(Boolean); return c.length ? 'Calibrated: ' + c.map((x, i) => 'L' + (i + 1) + ' ' + x.ppm.toFixed(1) + ' px/m').join(', ') + (c.length > 1 ? ' (perspective on)' : ' (1 line: poore frame me same scale)') : 'Calibrate nahi hua'; }
 o.addEventListener('pointerdown', e => { if (!calOn) return; const r = o.getBoundingClientRect(), W = o.width || v.videoWidth, H = o.height || v.videoHeight; calPts.push({ x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H });
-  if (calPts.length === 1) $('calst').textContent = 'Ab doosra point tap karo'; else { calOn = false; o.style.pointerEvents = 'none'; const d = +$('cdist').value, px = Math.hypot(calPts[0].x - calPts[1].x, calPts[0].y - calPts[1].y); if (d > 0 && px > 5) { cal = { p: calPts.slice(), ppm: px / d }; $('calst').textContent = 'Calibrated: ' + (px / d).toFixed(1) + ' px/meter'; } else $('calst').textContent = 'Calibrate fail, dubara'; } });
+  if (calPts.length === 1) $('calst').textContent = 'Ab doosra point tap karo'; else { calOn = false; o.style.pointerEvents = 'none'; const d = +$(calIdx ? 'cdist2' : 'cdist').value, px = Math.hypot(calPts[0].x - calPts[1].x, calPts[0].y - calPts[1].y); if (d > 0 && px > 5) { cals[calIdx] = { p: calPts.slice(), ppm: px / d, y: (calPts[0].y + calPts[1].y) / 2 }; cal = cals.filter(Boolean); $('calst').textContent = calText(); } else $('calst').textContent = 'Calibrate fail, dubara'; } });
+function ppmAt(y) { const c = cals.filter(Boolean); if (!c.length) return null; if (c.length === 1) return c[0].ppm; c.sort((a, b) => a.y - b.y); const [A, B] = c; if (Math.abs(B.ppm - A.ppm) < 0.05 * A.ppm || Math.abs(B.y - A.y) < 10) return (A.ppm + B.ppm) / 2;
+  const yh = (A.y * B.ppm - B.y * A.ppm) / (B.ppm - A.ppm); let p; if (yh < A.y - 5 && B.ppm > A.ppm || yh > B.y + 5 && B.ppm < A.ppm) { p = (A.ppm / (A.y - yh)) * (y - yh); } else p = A.ppm + (B.ppm - A.ppm) * (y - A.y) / (B.y - A.y); return Math.min(Math.max(p, 0.4 * Math.min(A.ppm, B.ppm)), 2.5 * Math.max(A.ppm, B.ppm)); }
+function trackSpeed(h) { if (h.length < 12) return null; const last = h[h.length - 1]; let k = h.length - 1; while (k > 0 && last.t - h[k - 1].t < 2.5) k--; const w = h.slice(k); if (w.length < 10 || last.t - w[0].t < 1.2) return null; const n = Math.max(3, Math.floor(w.length / 3)), avg = arr => ({ x: arr.reduce((a, p) => a + p.x, 0) / arr.length, y: arr.reduce((a, p) => a + p.y, 0) / arr.length, t: arr.reduce((a, p) => a + p.t, 0) / arr.length }), p0 = avg(w.slice(0, n)), p1 = avg(w.slice(-n)); const dt = p1.t - p0.t; if (dt < 0.6) return null; const ppm = ppmAt((p0.y + p1.y) / 2); if (!ppm) return null; return Math.hypot(p1.x - p0.x, p1.y - p0.y) / ppm / dt * 3.6; }
 const CLS = { car: 'car', truck: 'truck', bus: 'bus', motorcycle: 'bike', bicycle: 'cycle' }, GOVT = { car: 70, truck: 60, bus: 60, motorcycle: 60, bicycle: 30 };
 function iou(a, b) { const x = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)), y = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)), i = x * y; return i / ((a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - i + 1e-6); }
 async function stepTraffic() {
@@ -267,12 +276,11 @@ async function stepTraffic() {
     if (!best) { best = { id: nextTid++, hist: [], miss: 0, over: false, spd: null }; tracks.push(best); } used.add(best); best.box = d; best.cls = d.cls; best.miss = 0; best.hist.push({ t: now, x: (d.x1 + d.x2) / 2, y: d.y2 }); while (best.hist.length > 40) best.hist.shift(); }
   for (let i = tracks.length - 1; i >= 0; i--) { if (!used.has(tracks[i]) && ++tracks[i].miss > 6) tracks.splice(i, 1); }
   ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(14, W / 45) + 'px sans-serif'; const lim = +$('lim').value || 40; let over = 0, fresh = false;
-  if (cal) { ctx.strokeStyle = '#ffd60a'; ctx.beginPath(); ctx.moveTo(cal.p[0].x, cal.p[0].y); ctx.lineTo(cal.p[1].x, cal.p[1].y); ctx.stroke(); }
-  for (const t of tracks) { if (t.miss) continue; const h = t.hist, last = h[h.length - 1]; let k = h.length - 1; while (k > 0 && last.t - h[k - 1].t < 1.0) k--; const a = h[k];
-    if (cal && last.t - a.t > 0.5 && h.length > 4) { const sp = Math.hypot(last.x - a.x, last.y - a.y) / cal.ppm / (last.t - a.t) * 3.6; t.spd = t.spd == null ? sp : 0.6 * t.spd + 0.4 * sp; }
-    const L = $('govt').checked ? GOVT[t.cls] || lim : lim, ov = t.spd != null && t.spd > L && h.length > 8 && last.t - h[0].t > 1.2; if (ov) { over++; if (!t.over) { t.over = true; fresh = true; addEvidence('Overspeed ' + Math.round(t.spd) + ' km/h (limit ' + L + ')', t.box, true); } }
+  for (const c of cals) if (c) { ctx.strokeStyle = '#ffd60a'; ctx.beginPath(); ctx.moveTo(c.p[0].x, c.p[0].y); ctx.lineTo(c.p[1].x, c.p[1].y); ctx.stroke(); }
+  for (const t of tracks) { if (t.miss) continue; const h = t.hist, last = h[h.length - 1]; const sp = cals.some(Boolean) ? trackSpeed(h) : null; if (sp != null) { t.sps = (t.sps || []).concat(sp).slice(-7); const m = t.sps.slice().sort((x, y) => x - y)[t.sps.length >> 1]; t.spd = t.spd == null ? m : 0.7 * t.spd + 0.3 * m; }
+    const L = $('govt').checked ? GOVT[t.cls] || lim : lim, ov = t.spd != null && t.spd > L && (t.sps || []).length >= 4 && last.t - h[0].t > 1.5; if (ov) { over++; if (!t.over) { t.over = true; fresh = true; addEvidence('Overspeed ' + Math.round(t.spd) + ' km/h (limit ' + L + ')', t.box, true); } }
     const b = t.box; ctx.strokeStyle = ov ? '#ff3b30' : '#34c759'; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); const lab = (CLS[t.cls] || t.cls) + (t.spd != null ? ' ' + Math.round(t.spd) + ' km/h' : ''); const tw = ctx.measureText(lab).width + 8; ctx.fillStyle = ov ? '#ff3b30' : '#1a7f37'; ctx.fillRect(b.x1, Math.max(0, b.y1 - 22), tw, 22); ctx.fillStyle = '#fff'; ctx.fillText(lab, b.x1 + 4, Math.max(16, b.y1 - 5)); }
-  const ms = performance.now() - t0; $('fps').textContent = 'Traffic: ' + Math.round(ms) + ' ms/frame, gaadiyan ' + tracks.filter(t => !t.miss).length + (cal ? '' : ' (calibrate karo speed ke liye)');
+  const ms = performance.now() - t0; $('fps').textContent = 'Traffic: ' + Math.round(ms) + ' ms/frame, gaadiyan ' + tracks.filter(t => !t.miss).length + (cals.some(Boolean) ? '' : ' (calibrate karo speed ke liye)');
   return { r: { level: over ? 'alert' : 'calm', alert: over > 0 }, helmet: true, text: over ? 'ALERT: overspeed (' + over + ')' : 'Traffic chal raha hai', fresh };
 }
 // ---- Evidence ----
