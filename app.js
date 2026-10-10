@@ -164,7 +164,7 @@ $('start').onclick = async () => {
     v.srcObject = stream; await v.play(); running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
-$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch { setStatus('Ye video play nahi hua.'); } e.target.value = ''; };
+$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch (er) { setStatus('Ye video play nahi hua: ' + (er && er.message || er)); } e.target.value = ''; };
 $('sens').parentElement.insertAdjacentHTML('afterend', '<p><button id="tsiren" type="button">Siren test (volume max karo)</button></p>'); $('tsiren').onclick = () => { unlockAudio(); stopSiren(0); setTimeout(beep, 150); };
 window.__step = step; window.__det = det; window.__v = v;
 
