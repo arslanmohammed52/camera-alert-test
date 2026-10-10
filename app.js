@@ -88,7 +88,7 @@ function gateOK(lm, pts, boxes, tw, th) {
   if (!pdet) return true;
   const cx = (ms.x + mh.x) / 2, cy = (ms.y + mh.y) / 2;
   if (boxes.some(b => cx > b.x1 && cx < b.x2 && cy > b.y1 && cy < b.y2)) return true;
-  window.__g.kd++; return false;
+  if (vis >= 15) return true; window.__g.kd++; return false;
 }
 function detectAll(W, H, zoom, far) {
   const found = [];
@@ -125,7 +125,7 @@ function beep() {
 function step(ts) {
   if (v.readyState < 2 || !v.videoWidth) return null;
   const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; }
-  const zoom = +$('zoom').value / 10, far = $('far').checked;
+  const zoom = +$('zoom').value / 10, far = $('far').checked && !$('light').checked;
   const t0 = performance.now(); const people = detectAll(W, H, zoom, far); const ms = performance.now() - t0;
   const poses = people.map(p => p.pts.map(q => ({ x: q.x, y: q.y, v: q.v })));
   det.sens = +$('sens').value;
@@ -141,14 +141,14 @@ function loop() {
   const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy) return;
     if (v.ended) { stopAll('Clip khatam.'); return; }
     busy = true; let p;
-    try { p = Promise.resolve($('mode').value === 'helmet' ? stepHelmet() : step(performance.now())); } catch (e) { busy = false; return; }
+    try { const md = $('mode').value; if ($('light').checked && Date.now() - (window.__lastStep || 0) < 450) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : step(performance.now())); } catch (e) { busy = false; return; }
     p.then(out => { busy = false; if (!out) return; handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
   };
   raf = requestAnimationFrame(tick);
 }
 function handle(out) {
   const r = out.r; let lvl = r.level;
-  if (r.alert) { if (!al.on) { al.on = true; al.start = Date.now(); beep(); } al.cool = 0; lvl = 'alert'; }
+  if (r.alert) { if (!al.on) { al.on = true; al.start = Date.now(); beep(); if (!out.helmet) addEvidence('Maar-peet jaisi movement (pose alert)', null, true); } al.cool = 0; lvl = 'alert'; }
   else if (al.on && ++al.cool > (out.helmet ? 3 : 8)) { al.on = false; if (!out.helmet) { const li = document.createElement('li'); li.textContent = new Date(al.start).toLocaleTimeString() + ' par, ' + Math.max(1, Math.round((Date.now() - al.start) / 1000)) + ' sec'; $('log').prepend(li); $('nolog').hidden = true; } }
   else if (al.on) lvl = 'alert';
   $('cam').className = 'cam ' + (lvl === 'alert' ? 'alert' : '');
@@ -157,7 +157,7 @@ function handle(out) {
 function stopAll(msg) { running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
 $('start').onclick = async () => {
   unlockAudio(); if (running) return stopAll();
-  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: $('light').checked ? 640 : 1280 }, height: { ideal: $('light').checked ? 360 : 720 } }, audio: false });
     v.srcObject = stream; await v.play(); running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
@@ -203,7 +203,7 @@ async function stepHelmet() {
   if (!hsess) { await initHelmet(); }
   if (v.readyState < 2 || !v.videoWidth) return null;
   const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; }
-  const zoom = +$('zoom').value / 10, far = $('far').checked, t0 = performance.now();
+  const zoom = +$('zoom').value / 10, far = $('far').checked && !$('light').checked, t0 = performance.now();
   const rw = W / zoom, rh = H / zoom, rx = (W - rw) / 2, ry = (H - rh) / 2, regs = [{ x: rx, y: ry, w: rw, h: rh }];
   if (far) for (const ix of [0, 1]) for (const iy of [0, 1]) regs.push({ x: rx + ix * rw * 0.4, y: ry + iy * rh * 0.4, w: rw * 0.6, h: rh * 0.6 });
   let heads = []; for (const P of regs) heads = heads.concat(await runHelmet(P, W, H, 0.35)); heads = nmsBoxes(heads, 0.4);
@@ -223,6 +223,7 @@ async function stepHelmet() {
   return { r: { level: viol.length ? 'alert' : 'calm', alert: viol.length > 0, count: heads.length }, helmet: true, text, fresh, viol: viol.length, heads: heads.length, bikes: bikes.length };
 }
 function logViolation(bike, W, H) {
+  addEvidence('Bina helmet bike sawar', bike);
   const pw = (bike.x2 - bike.x1), ph = (bike.y2 - bike.y1), x = Math.max(0, bike.x1 - pw * 0.25), y = Math.max(0, bike.y1 - ph * 0.9), w = Math.min(W - x, pw * 1.5), h = Math.min(H - y, ph * 1.9);
   const c = document.createElement('canvas'); const sc = Math.min(2.5, Math.max(1, 640 / w)); c.width = Math.round(w * sc); c.height = Math.round(h * sc); c.getContext('2d').drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
   c.style.cssText = 'max-width:160px;border-radius:8px;display:block'; const li = document.createElement('li'); li.style.margin = '8px 0';
@@ -242,4 +243,70 @@ async function readPlate(canvas) {
 $('status').insertAdjacentHTML('afterend', '<p><label>Mode: <select id="mode"><option value="pose">Ladai / maar-peet (pose)</option><option value="helmet">Bina helmet bike + number plate</option></select></label></p>');
 $('mode').onchange = () => { if ($('mode').value === 'helmet') initHelmet().catch(() => {}); };
 document.body.insertAdjacentHTML('beforeend', '<div class="warn" style="font-size:13px"><b>Helmet + plate mode (private concept test):</b> helmet model = Smolry/Helmet-classifer (YOLO11s, AGPL-3.0, Roboflow-forked dataset). Bike detection = MediaPipe EfficientDet-Lite0 (Apache-2.0). Plate = OpenIPC/lpr-wasm (code MIT, model weights CC BY-NC 4.0, non-commercial). Pose = MediaPipe BlazePose (Apache-2.0). Models browser me download hote hain, tumhari video kahin nahi jaati. In licences ke saath ye bechne layak nahi, sirf private test. Plate padhna sirf paas, saaf, din ki roshni me chalega; door, tez, blur ya raat me galat/khali aayega.</div>');
+// ---- Extras: camera switch, photo input, traffic mode, evidence, light mode ----
+let vdet = null, vInit = null; const tracks = []; let nextTid = 1, cal = null, calPts = [], calOn = false; const ring = [];
+$('mode').insertAdjacentHTML('beforeend', '<option value="traffic">Traffic: gaadi + speed</option>');
+$('start').insertAdjacentHTML('afterend', '<button id="flip" type="button" style="margin-left:6px;background:#555">Camera badlo (front/back)</button><label class="btn" style="background:#555;margin-left:6px">Gallery se photo<input id="photo" type="file" accept="image/*" style="display:none"></label>');
+$('front').parentElement.insertAdjacentHTML('afterend', '<label><input type="checkbox" id="light"> Light mode (purana phone / CCTV: chhota resolution, kam fps)</label>');
+$('cam').insertAdjacentHTML('afterend', '<div id="tpanel" hidden style="background:#eef;padding:8px;border-radius:8px;margin:8px 0;font-size:14px"><b>Traffic setup</b><br>Speed limit (km/h): <input id="lim" type="number" value="40" style="width:60px"> <label><input type="checkbox" id="govt"> Sarkari limit (car 70, bike 60, truck/bus 60, auto 50)</label><br>Road par 2 jagah ke beech asli doori (meter): <input id="cdist" type="number" value="10" style="width:60px"> <button id="calb" type="button">Calibrate: 2 point tap karo</button> <span id="calst">Calibrate nahi hua (speed nahi dikhegi)</span></div><h3>Evidence (sirf is phone me)</h3><ul id="evl" style="padding-left:0;list-style:none"></ul>');
+function showPanel() { $('tpanel').hidden = $('mode').value !== 'traffic'; }
+$('mode').addEventListener('change', () => { showPanel(); if ($('mode').value === 'traffic') initTraffic().catch(() => {}); });
+function initTraffic() { if (vInit) return vInit; vInit = (async () => { setStatus('Gaadi detector load ho raha hai...'); const M = window.__mpv, opt = d => ({ baseOptions: { modelAssetPath: EFFDET_URL, delegate: d }, runningMode: 'IMAGE', scoreThreshold: 0.3, maxResults: 25, categoryAllowlist: ['car', 'truck', 'bus', 'motorcycle', 'bicycle'] });
+  try { vdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('GPU')); } catch (e) { vdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('CPU')); } setStatus('Traffic mode ready.'); })().catch(e => { vInit = null; setStatus('Traffic load fail: ' + e); throw e; }); return vInit; }
+$('calb').onclick = () => { calPts = []; calOn = true; o.style.pointerEvents = 'auto'; $('calst').textContent = 'Video par road ka pehla point tap karo'; };
+o.addEventListener('pointerdown', e => { if (!calOn) return; const r = o.getBoundingClientRect(), W = o.width || v.videoWidth, H = o.height || v.videoHeight; calPts.push({ x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H });
+  if (calPts.length === 1) $('calst').textContent = 'Ab doosra point tap karo'; else { calOn = false; o.style.pointerEvents = 'none'; const d = +$('cdist').value, px = Math.hypot(calPts[0].x - calPts[1].x, calPts[0].y - calPts[1].y); if (d > 0 && px > 5) { cal = { p: calPts.slice(), ppm: px / d }; $('calst').textContent = 'Calibrated: ' + (px / d).toFixed(1) + ' px/meter'; } else $('calst').textContent = 'Calibrate fail, dubara'; } });
+const CLS = { car: 'car', truck: 'truck', bus: 'bus', motorcycle: 'bike', bicycle: 'cycle' }, GOVT = { car: 70, truck: 60, bus: 60, motorcycle: 60, bicycle: 30 };
+function iou(a, b) { const x = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)), y = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)), i = x * y; return i / ((a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - i + 1e-6); }
+async function stepTraffic() {
+  if (!vdet) await initTraffic(); if (v.readyState < 2 || !v.videoWidth) return null;
+  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; } const t0 = performance.now(), now = t0 / 1000;
+  const dets = vdet.detect(v).detections.map(d => ({ x1: d.boundingBox.originX, y1: d.boundingBox.originY, x2: d.boundingBox.originX + d.boundingBox.width, y2: d.boundingBox.originY + d.boundingBox.height, cls: d.categories[0].categoryName, s: d.categories[0].score }));
+  const used = new Set();
+  for (const d of dets) { let best = null, bs = 0.15; for (const t of tracks) { if (used.has(t)) continue; const s = iou(d, t.box); const dd = Math.hypot((d.x1 + d.x2 - t.box.x1 - t.box.x2) / 2, (d.y1 + d.y2 - t.box.y1 - t.box.y2) / 2) / Math.max(d.x2 - d.x1, 1); const sc = s + (dd < 0.8 ? 0.15 : 0); if (sc > bs) { bs = sc; best = t; } }
+    if (!best) { best = { id: nextTid++, hist: [], miss: 0, over: false, spd: null }; tracks.push(best); } used.add(best); best.box = d; best.cls = d.cls; best.miss = 0; best.hist.push({ t: now, x: (d.x1 + d.x2) / 2, y: d.y2 }); while (best.hist.length > 40) best.hist.shift(); }
+  for (let i = tracks.length - 1; i >= 0; i--) { if (!used.has(tracks[i]) && ++tracks[i].miss > 6) tracks.splice(i, 1); }
+  ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(14, W / 45) + 'px sans-serif'; const lim = +$('lim').value || 40; let over = 0, fresh = false;
+  if (cal) { ctx.strokeStyle = '#ffd60a'; ctx.beginPath(); ctx.moveTo(cal.p[0].x, cal.p[0].y); ctx.lineTo(cal.p[1].x, cal.p[1].y); ctx.stroke(); }
+  for (const t of tracks) { if (t.miss) continue; const h = t.hist, last = h[h.length - 1]; let k = h.length - 1; while (k > 0 && last.t - h[k - 1].t < 1.0) k--; const a = h[k];
+    if (cal && last.t - a.t > 0.5 && h.length > 4) { const sp = Math.hypot(last.x - a.x, last.y - a.y) / cal.ppm / (last.t - a.t) * 3.6; t.spd = t.spd == null ? sp : 0.6 * t.spd + 0.4 * sp; }
+    const L = $('govt').checked ? GOVT[t.cls] || lim : lim, ov = t.spd != null && t.spd > L && h.length > 6; if (ov) { over++; if (!t.over) { t.over = true; fresh = true; addEvidence('Overspeed ' + Math.round(t.spd) + ' km/h (limit ' + L + ')', t.box, true); } }
+    const b = t.box; ctx.strokeStyle = ov ? '#ff3b30' : '#34c759'; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); const lab = (CLS[t.cls] || t.cls) + (t.spd != null ? ' ' + Math.round(t.spd) + ' km/h' : ''); const tw = ctx.measureText(lab).width + 8; ctx.fillStyle = ov ? '#ff3b30' : '#1a7f37'; ctx.fillRect(b.x1, Math.max(0, b.y1 - 22), tw, 22); ctx.fillStyle = '#fff'; ctx.fillText(lab, b.x1 + 4, Math.max(16, b.y1 - 5)); }
+  const ms = performance.now() - t0; $('fps').textContent = 'Traffic: ' + Math.round(ms) + ' ms/frame, gaadiyan ' + tracks.filter(t => !t.miss).length + (cal ? '' : ' (calibrate karo speed ke liye)');
+  return { r: { level: over ? 'alert' : 'calm', alert: over > 0 }, helmet: true, text: over ? 'ALERT: overspeed (' + over + ')' : 'Traffic chal raha hai', fresh };
+}
+// ---- Evidence ----
+let edb = null; const eopen = new Promise(res => { try { const q = indexedDB.open('evidence', 1); q.onupgradeneeded = () => q.result.createObjectStore('e', { keyPath: 'id' }); q.onsuccess = () => { edb = q.result; res(); }; q.onerror = () => res(); } catch (e) { res(); } });
+const ecan = document.createElement('canvas'), ectx = ecan.getContext('2d'); let rec = null, recBusy = false, ctimer = 0;
+function stamp(c2, type) { const t = new Date().toLocaleString(); c2.font = Math.max(14, c2.canvas.width / 38) + 'px sans-serif'; const w = c2.measureText(t + ' | ' + type).width + 12; c2.fillStyle = 'rgba(0,0,0,.65)'; c2.fillRect(0, 0, w, Math.max(24, c2.canvas.width / 30)); c2.fillStyle = '#fff'; c2.fillText(t + ' | ' + type, 6, Math.max(17, c2.canvas.width / 44)); }
+function compose(type) { const W = v.videoWidth, H = v.videoHeight; if (!W) return; if (ecan.width !== W) { ecan.width = W; ecan.height = H; } ectx.drawImage(v, 0, 0, W, H); ectx.drawImage(o, 0, 0, W, H); stamp(ectx, type); }
+setInterval(() => { if (!running || !v.videoWidth) return; const c2 = document.createElement('canvas'); c2.width = 320; c2.height = Math.round(320 * v.videoHeight / v.videoWidth); c2.getContext('2d').drawImage(v, 0, 0, c2.width, c2.height); ring.push({ t: Date.now(), c: c2 }); while (ring.length > 4) ring.shift(); }, 1500);
+const blob = (c2, q) => new Promise(r => c2.toBlob(r, 'image/jpeg', q || 0.85));
+async function addEvidence(type, box, noPlate) {
+  if (!running || !v.videoWidth) return; const id = Date.now() + '' + Math.floor(Math.random() * 1000), W = v.videoWidth, H = v.videoHeight; compose(type); const snap = await blob(ecan); let crop = null, cc = null;
+  if (box) { const w = box.x2 - box.x1, h = box.y2 - box.y1, x = Math.max(0, box.x1 - w * 0.2), y = Math.max(0, box.y1 - h * 0.6), cw = Math.min(W - x, w * 1.4), ch = Math.min(H - y, h * 1.9), sc = Math.min(3, Math.max(1, 480 / cw)); cc = document.createElement('canvas'); cc.width = Math.round(cw * sc); cc.height = Math.round(ch * sc); const g = cc.getContext('2d'); g.drawImage(v, x, y, cw, ch, 0, 0, cc.width, cc.height); stamp(g, type); crop = await blob(cc); }
+  const before = []; for (const r of ring.slice(-3)) { const c2 = r.c; before.push(await blob(c2, 0.7)); }
+  const recd = { id, ts: Date.now(), type, snap, crop, before, clip: null, plate: '' }; if (edb) { try { edb.transaction('e', 'readwrite').objectStore('e').put(recd); } catch (e) {} } renderEv(recd);
+  if (cc && !noPlate) readPlate(cc).then(p => { recd.plate = p; save(recd); renderEv(recd); }).catch(() => {});
+  if (!recBusy && window.MediaRecorder) { recBusy = true; try { const st = ecan.captureStream(8), mt = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m)); const mr = new MediaRecorder(st, mt ? { mimeType: mt, videoBitsPerSecond: 800000 } : {}), ch2 = []; mr.ondataavailable = e => e.data.size && ch2.push(e.data); const tm = setInterval(() => compose(type), 120);
+    mr.onstop = () => { clearInterval(tm); recBusy = false; recd.clip = new Blob(ch2, { type: mr.mimeType }); save(recd); renderEv(recd); }; mr.start(1000); setTimeout(() => { try { mr.stop(); } catch (e) {} }, 10000); } catch (e) { recBusy = false; } }
+  return recd; }
+function save(r) { if (edb) try { edb.transaction('e', 'readwrite').objectStore('e').put(r); } catch (e) {} }
+function renderEv(r) { let li = document.getElementById('ev' + r.id); if (!li) { li = document.createElement('li'); li.id = 'ev' + r.id; li.style.cssText = 'margin:10px 0;padding:8px;background:#fff;border-radius:8px'; $('evl').prepend(li); } li.innerHTML = '';
+  const t = document.createElement('div'); t.innerHTML = '<b></b><br><small></small>'; t.firstChild.textContent = new Date(r.ts).toLocaleString() + ' - ' + r.type; t.lastChild.textContent = r.plate ? 'Plate: ' + r.plate : ''; li.append(t);
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0'; for (const b of [r.snap, r.crop, ...(r.before || [])]) if (b) { const im = document.createElement('img'); im.src = URL.createObjectURL(b); im.style.cssText = 'max-height:90px;border-radius:6px'; row.append(im); } li.append(row);
+  if (r.clip) { const vd = document.createElement('video'); vd.src = URL.createObjectURL(r.clip); vd.controls = true; vd.muted = true; vd.style.cssText = 'max-width:100%;max-height:160px'; li.append(vd); } else { const s = document.createElement('small'); s.textContent = '(10 sec clip record ho rahi hai...)'; li.append(s); }
+  const mk = (txt, fn) => { const b = document.createElement('button'); b.textContent = txt; b.type = 'button'; b.style.marginRight = '6px'; b.onclick = fn; li.append(b); };
+  const ext = r.clip && /mp4/.test(r.clip.type) ? 'mp4' : 'webm'; const dl = (b, n) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = n; a.click(); };
+  mk('Photo download', () => dl(r.snap, 'evidence-' + r.id + '.jpg')); if (r.clip) mk('Video download', () => dl(r.clip, 'evidence-' + r.id + '.' + ext));
+  mk('Share (WhatsApp)', async () => { const files = [new File([r.snap], 'evidence-' + r.id + '.jpg', { type: 'image/jpeg' })]; if (r.clip) files.push(new File([r.clip], 'evidence-' + r.id + '.' + ext, { type: r.clip.type })); try { await navigator.share({ files, title: r.type, text: new Date(r.ts).toLocaleString() + ' - ' + r.type + (r.plate ? ' - ' + r.plate : '') }); } catch (e) { if (e.name !== 'AbortError') setStatus('Share is browser me nahi chala, download use karo.'); } }); }
+eopen.then(() => { if (!edb) return; const q = edb.transaction('e').objectStore('e').getAll(); q.onsuccess = () => q.result.sort((a, b) => a.ts - b.ts).slice(-30).forEach(renderEv); });
+// ---- Camera switch, photo, wake lock, light mode ----
+let wl = null; async function wake() { try { if (navigator.wakeLock && running) wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+$('flip').onclick = async () => { $('front').checked = !$('front').checked; if (stream) { running = false; $('start').click(); await new Promise(r => setTimeout(r, 300)); $('start').click(); } else setStatus('Camera ' + ($('front').checked ? 'front' : 'back') + ' select hua. Start dabao.'); };
+let phT = 0; $('photo').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); const img = new Image(); img.src = URL.createObjectURL(f); try { await img.decode(); } catch (er) { setStatus('Photo khul nahi payi.'); return; }
+  const c2 = document.createElement('canvas'), s = Math.min(1, 1280 / Math.max(img.width, img.height)); c2.width = Math.round(img.width * s); c2.height = Math.round(img.height * s); const g = c2.getContext('2d'); const draw = () => g.drawImage(img, 0, 0, c2.width, c2.height); draw(); clearInterval(phT); phT = setInterval(draw, 400); v.srcObject = c2.captureStream(3); v.muted = true; await v.play(); running = true; setStatus('Photo analyse ho rahi hai (stop karne ko Band karo).'); $('start').textContent = 'Band karo'; loop(); e.target.value = ''; };
+const _stop = stopAll; stopAll = function (m) { clearInterval(phT); _stop(m); }; const _start = $('start').onclick; $('start').onclick = async () => { await _start(); wake(); if ($('light').checked) setStatus('Light mode on: kam resolution/fps.'); };
+
 init();
