@@ -354,3 +354,24 @@ async function stepSchool() {
 }
 const _step = window.__stepMode; window.__school = stepSchool;
 window.__test = { setDet: d => { phdet = d; }, school: stepSchool, reset: () => { phN = 0; phOn = false; poseOn = false; } };
+// ---- Plain-language principal instruction (Hindi/Hinglish/English), pattern rules only. Never applies without a confirm tap. ----
+function parsePrincipal(text, now) { now = now || new Date(); const t = text.toLowerCase().replace(/[।]/g, ' '), notes = [];
+  if (/mana\b|not allowed|isn.?t allowed|nahi\s+(chalega|chalegi|allowed)|banned|prohibit|forbid|don.?t allow|allow\s*(mat|nahi)/.test(t)) return { ok: false, reason: 'Yeh chhoot nahi, rok/mana hai. Kuch nahi badla.' };
+  if (/fight|ladai|ladayi|लड़ाई|maar.?peet|मारपीट|helmet|हेलमेट|speed|स्पीड/.test(t)) return { ok: false, reason: 'Web page par sirf phone ki chhoot hoti hai (ladai/helmet/speed ka alert band nahi kiya ja sakta).' };
+  if (!/phone|mobile|मोबाइल|फोन|फ़ोन|cell/.test(t)) return { ok: false, reason: 'Kis cheez ki chhoot? "phone" likho.' };
+  if (!/allow|permit|exempt|\bok\b|okay|fine|chalega|chalegi|ijaz|chhoot|chhut|\bchut\b|छूट|इजाज़त|manzoor|karne\s*do|use\s*kar|ignore|alert\s*(mat|nahi|band)|no alert/.test(t)) return { ok: false, reason: 'Samajh nahi aaya ki chhoot deni hai. "allowed" / "chhoot" likho.' };
+  const part = ['subah', 'morning', 'dopahar', 'afternoon', 'shaam', 'evening', 'raat', 'night'].find(p => t.includes(p)); let s, f;
+  if (/poora din|pura din|din bhar|all day|whole day|full day/.test(t)) { s = [0, 0]; f = [23, 59]; } else {
+    const N = '(\\d{1,2})(?::|\\.|h)?(\\d{2})?\\s*(am|pm|a\\.m\\.|p\\.m\\.)?\\s*(?:baje|bje|बजे|o.?clock)?', m = new RegExp(N + '\\s*(?:se|से|to|till|until|tak|तक|-|–)\\s*' + N).exec(t);
+    if (!m) return { ok: false, reason: "Time samajh nahi aaya. Aise likho: '10 baje se 1 baje tak' ya '10am to 1pm'." };
+    const hm = (h, mi, mer) => { h = +h; mi = +(mi || 0); if (mer) mer = mer[0]; let nt = null; if (mer === 'p' && h < 12) h += 12; else if (mer === 'a' && h === 12) h = 0; else if (!mer) { if (['shaam', 'raat', 'dopahar', 'evening', 'night', 'afternoon'].includes(part) && h < 12) h += (part === 'dopahar' && h === 12) ? 0 : 12; else if (!part && h >= 1 && h <= 6) { h += 12; nt = (h - 12) + ' ko ' + h + ':00 (dopahar/shaam) maana'; } } return [h, mi, nt]; };
+    let a = hm(m[1], m[2], m[3]), b = hm(m[4], m[5], m[6]); if (!m[3] && !m[6] && !part && b[0] * 60 + b[1] <= a[0] * 60 + a[1] && b[0] < 12) { b = [b[0] + 12, b[1], b[0] + ' ko ' + (b[0] + 12) + ':' + String(b[1]).padStart(2, '0') + ' maana']; }
+    for (const x of [a, b]) if (x[2]) notes.push(x[2]); s = a.slice(0, 2); f = b.slice(0, 2);
+    if (s[0] > 23 || f[0] > 23 || s[1] > 59 || f[1] > 59 || (s[0] === f[0] && s[1] === f[1])) return { ok: false, reason: 'Time galat hai.' }; }
+  const d0 = /\bkal\b|tomorrow|कल/.test(t) ? new Date(now.getTime() + 864e5) : now, date = d0.getFullYear() + '-' + String(d0.getMonth() + 1).padStart(2, '0') + '-' + String(d0.getDate()).padStart(2, '0'), p2 = x => String(x).padStart(2, '0');
+  return { ok: true, from: p2(s[0]) + ':' + p2(s[1]), to: p2(f[0]) + ':' + p2(f[1]), date, notes }; }
+window.__parsePrincipal = parsePrincipal;
+$('rSt').insertAdjacentHTML('afterend', '<div id="nlp"><textarea id="nlpT" rows="2" style="width:100%" placeholder="Aise likho: aaj 10 baje se 1 baje tak phone allowed hai  /  phones are fine from 10am to 1pm"></textarea><button id="nlpB" type="button">Samjho</button> <span id="nlpR" style="font-size:13px"></span> <button id="nlpY" type="button" hidden>Haan, lagu karo</button></div>');
+let pend = null;
+$('nlpB').onclick = () => { const o = parsePrincipal($('nlpT').value); pend = null; $('nlpY').hidden = true; if (!o.ok) { $('nlpR').textContent = o.reason; return; } pend = o; $('nlpR').textContent = 'Maine samjha: phone par alert band ' + o.from + '-' + o.to + ' (' + o.date + '). Baaki sab alert chalu.' + (o.notes.length ? ' [' + o.notes.join('; ') + ']' : '') + ' Sahi hai?'; $('nlpY').hidden = false; };
+$('nlpY').onclick = () => { if (!pend) return; localStorage.setItem('phoneRule', JSON.stringify({ on: true, from: pend.from, to: pend.to, date: pend.date })); $('rOn').checked = true; $('rFrom').value = pend.from; $('rTo').value = pend.to; $('nlpY').hidden = true; $('nlpR').textContent = 'Lagu ho gaya.'; pend = null; rUpd(); };
