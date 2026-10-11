@@ -211,7 +211,7 @@ async function stepHelmet() {
   const rw = W / zoom, rh = H / zoom, rx = (W - rw) / 2, ry = (H - rh) / 2, regs = [{ x: rx, y: ry, w: rw, h: rh }];
   if (far) for (const ix of [0, 1]) for (const iy of [0, 1]) regs.push({ x: rx + ix * rw * 0.4, y: ry + iy * rh * 0.4, w: rw * 0.6, h: rh * 0.6 });
   let heads = []; for (const P of regs) heads = heads.concat(await runHelmet(P, W, H, 0.35)); heads = nmsBoxes(heads, 0.4);
-  const det = odet.detect(v); const bikes = det.detections.filter(d => d.categories[0].categoryName === 'motorcycle').map(d => ({ x1: d.boundingBox.originX, y1: d.boundingBox.originY, x2: d.boundingBox.originX + d.boundingBox.width, y2: d.boundingBox.originY + d.boundingBox.height, s: d.categories[0].score }));
+  const headTest = $('hAny').checked; const det = headTest ? { detections: [] } : odet.detect(v); const bikes = det.detections.filter(d => d.categories[0].categoryName === 'motorcycle').map(d => ({ x1: d.boundingBox.originX, y1: d.boundingBox.originY, x2: d.boundingBox.originX + d.boundingBox.width, y2: d.boundingBox.originY + d.boundingBox.height, s: d.categories[0].score }));
   const viol = [], ok = [], other = [];
   for (const h of heads) { const cx = (h.x1 + h.x2) / 2, cy = (h.y1 + h.y2) / 2; const bike = bikes.find(b => { const bw = b.x2 - b.x1, bh = b.y2 - b.y1; return cx > b.x1 - 0.15 * bw && cx < b.x2 + 0.15 * bw && cy > b.y1 - 0.9 * bh && cy < b.y2; });
     if (bike) (h.no ? viol : ok).push({ h, bike }); else other.push(h); }
@@ -224,13 +224,14 @@ async function stepHelmet() {
   ctx.strokeStyle = '#ff3b30'; for (const { h } of viol) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1);
   const lab = (h, t, c) => { ctx.fillStyle = c; const tw = ctx.measureText(t).width + 6; ctx.fillRect(h.x1, Math.max(0, h.y1 - 20), tw, 20); ctx.fillStyle = '#fff'; ctx.fillText(t, h.x1 + 3, Math.max(15, h.y1 - 5)); }; for (const { h } of ok) lab(h, 'HELMET ' + Math.round(h.s * 100) + '%', '#1a7f37'); for (const { h } of viol) lab(h, 'NO HELMET ' + Math.round(h.s * 100) + '%', '#ff3b30'); for (const h of other) lab(h, 'sir ' + (h.no ? 'bina helmet' : 'helmet') + ' (bike nahi)', '#666');
   const now = Date.now(); let fresh = false;
-  for (const { h, bike } of viol) { const cx = (bike.x1 + bike.x2) / 2, cy = (bike.y1 + bike.y2) / 2; if (recent.some(r => now - r.t < 4000 && Math.hypot(r.x - cx, r.y - cy) < Math.max(80, (bike.x2 - bike.x1)))) continue; recent.push({ t: now, x: cx, y: cy }); fresh = true; logViolation(bike, W, H); }
-  const ms = performance.now() - t0; $('fps').textContent = 'Helmet mode: ' + Math.round(ms) + ' ms/frame (' + (1000 / Math.max(ms, 1)).toFixed(1) + ' fps), bikes ' + bikes.length;
-  const text = viol.length ? 'ALERT: bina helmet bike sawar (' + viol.length + ')' : bikes.length ? 'Bike dikhi, helmet theek / dikh nahi raha' : heads.length ? 'Sir dikhe (' + heads.length + '), koi bina-helmet nahi' : 'Koi sir / bike nahi dikha';
+  for (const { h, bike } of viol) { const cx = (bike.x1 + bike.x2) / 2, cy = (bike.y1 + bike.y2) / 2; if (recent.some(r => now - r.t < 4000 && Math.hypot(r.x - cx, r.y - cy) < Math.max(80, (bike.x2 - bike.x1)))) continue; recent.push({ t: now, x: cx, y: cy }); fresh = true; logViolation(bike, W, H, headTest); }
+  const ms = performance.now() - t0; $('fps').textContent = (headTest ? 'Sir test: ' : 'Helmet road: ') + Math.round(ms) + ' ms/frame (' + (1000 / Math.max(ms, 1)).toFixed(1) + ' fps), bikes ' + bikes.length;
+  const text = viol.length ? (headTest ? 'ALERT: bina helmet sir (test, bike verify nahi)' : 'ALERT: bina helmet bike sawar') + ' (' + viol.length + ')'  : bikes.length ? 'Bike dikhi, helmet theek / dikh nahi raha' : heads.length ? 'Sir dikhe (' + heads.length + '), koi bina-helmet nahi' : 'Koi sir / bike nahi dikha';
   return { r: { level: viol.length ? 'alert' : 'calm', alert: viol.length > 0, count: heads.length }, helmet: true, text, fresh, viol: viol.length, heads: heads.length, bikes: bikes.length };
 }
-function logViolation(bike, W, H) {
-  addEvidence('Bina helmet bike sawar', bike);
+function logViolation(bike, W, H, headTest = false) {
+  addEvidence(headTest ? 'Bina helmet sir (test, bike verify nahi)' : 'Bina helmet bike sawar', bike);
+  if (headTest) return;
   const pw = (bike.x2 - bike.x1), ph = (bike.y2 - bike.y1), x = Math.max(0, bike.x1 - pw * 0.25), y = Math.max(0, bike.y1 - ph * 0.9), w = Math.min(W - x, pw * 1.5), h = Math.min(H - y, ph * 1.9);
   const c = document.createElement('canvas'); const sc = Math.min(2.5, Math.max(1, 640 / w)); c.width = Math.round(w * sc); c.height = Math.round(h * sc); c.getContext('2d').drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
   c.style.cssText = 'max-width:160px;border-radius:8px;display:block'; const li = document.createElement('li'); li.style.margin = '8px 0';
@@ -248,7 +249,7 @@ async function readPlate(canvas) {
 }
 // UI
 $('status').insertAdjacentHTML('afterend', '<p><label>Mode: <select id="mode"><option value="pose">Ladai / maar-peet (pose)</option><option value="helmet">Bina helmet bike + number plate</option></select></label></p>');
-$('far').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="hAny" checked> Helmet mode: bike na ho tab bhi bina-helmet sir par alert (test ke liye)</label></p>');
+$('far').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="hAny" checked> Tez sir-test: bike verify nahi; sirf bina-helmet sir par alert. Road + plate ke liye ise band karo.</label></p>');
 $('mode').onchange = () => { if ($('mode').value === 'helmet') initHelmet().catch(() => {}); };
 document.body.insertAdjacentHTML('beforeend', '<div class="warn" style="font-size:13px"><b>Helmet + plate mode (private concept test):</b> helmet model = Smolry/Helmet-classifer (YOLO11s, AGPL-3.0, Roboflow-forked dataset). Bike detection = MediaPipe EfficientDet-Lite0 (Apache-2.0). Plate = OpenIPC/lpr-wasm (code MIT, model weights CC BY-NC 4.0, non-commercial). Pose = MediaPipe BlazePose (Apache-2.0). Models browser me download hote hain, tumhari video kahin nahi jaati. In licences ke saath ye bechne layak nahi, sirf private test. Plate padhna sirf paas, saaf, din ki roshni me chalega; door, tez, blur ya raat me galat/khali aayega.</div>');
 // ---- Extras: camera switch, photo input, traffic mode, evidence, light mode ----
