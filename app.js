@@ -60,7 +60,7 @@ const LABEL = { none: 'Koi insaan nahi dikha', calm: 'Shaant', active: 'Koi tez 
 const det = new Detector(); let pl = null, stream = null, raf = 0, running = false, busy = false, al = { on: false, start: 0, cool: 0 };
 const v = $('v'), o = $('o'), ctx = o.getContext('2d'); const tile = document.createElement('canvas'), tctx = tile.getContext('2d');
 function setStatus(t) { $('status').textContent = t; }
-$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far" checked> Door ke log mode (zyada tiles, thoda slow)</label></p><p><label><input type="checkbox" id="deep"> Bahut door (9 tiles, bahut slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="40" value="10"></label><p id="fps" style="color:#666"></p>');
+$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far"> Door ke log mode (zyada tiles, thoda slow)</label></p><p><label><input type="checkbox" id="deep"> Bahut door (9 tiles, bahut slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="40" value="10"></label><p id="fps" style="color:#666"></p>');
 $('zoom').oninput = () => { $('zv').textContent = (+$('zoom').value / 10).toFixed(1) + 'x'; };
 async function init() {
   try {
@@ -214,15 +214,17 @@ async function stepHelmet() {
   const viol = [], ok = [], other = [];
   for (const h of heads) { const cx = (h.x1 + h.x2) / 2, cy = (h.y1 + h.y2) / 2; const bike = bikes.find(b => { const bw = b.x2 - b.x1, bh = b.y2 - b.y1; return cx > b.x1 - 0.15 * bw && cx < b.x2 + 0.15 * bw && cy > b.y1 - 0.9 * bh && cy < b.y2; });
     if (bike) (h.no ? viol : ok).push({ h, bike }); else other.push(h); }
-  ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250);
+  if ($('hAny').checked) { for (const h of other.splice(0)) { const w = h.x2 - h.x1, hh = h.y2 - h.y1, fb = { x1: h.x1 - w, x2: h.x2 + w, y1: h.y1, y2: h.y2 + 3 * hh, s: h.s }; (h.no ? viol : ok).push({ h, bike: fb }); } }
+  ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(14, W / 40) + 'px sans-serif';
   ctx.strokeStyle = '#ffd60a'; for (const b of bikes) ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
   ctx.setLineDash([6, 6]); ctx.strokeStyle = '#999'; for (const h of other) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1); ctx.setLineDash([]);
   ctx.strokeStyle = '#34c759'; for (const { h } of ok) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1);
   ctx.strokeStyle = '#ff3b30'; for (const { h } of viol) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1);
+  const lab = (h, t, c) => { ctx.fillStyle = c; const tw = ctx.measureText(t).width + 6; ctx.fillRect(h.x1, Math.max(0, h.y1 - 20), tw, 20); ctx.fillStyle = '#fff'; ctx.fillText(t, h.x1 + 3, Math.max(15, h.y1 - 5)); }; for (const { h } of ok) lab(h, 'HELMET ' + Math.round(h.s * 100) + '%', '#1a7f37'); for (const { h } of viol) lab(h, 'NO HELMET ' + Math.round(h.s * 100) + '%', '#ff3b30'); for (const h of other) lab(h, 'sir ' + (h.no ? 'bina helmet' : 'helmet') + ' (bike nahi)', '#666');
   const now = Date.now(); let fresh = false;
   for (const { h, bike } of viol) { const cx = (bike.x1 + bike.x2) / 2, cy = (bike.y1 + bike.y2) / 2; if (recent.some(r => now - r.t < 4000 && Math.hypot(r.x - cx, r.y - cy) < Math.max(80, (bike.x2 - bike.x1)))) continue; recent.push({ t: now, x: cx, y: cy }); fresh = true; logViolation(bike, W, H); }
   const ms = performance.now() - t0; $('fps').textContent = 'Helmet mode: ' + Math.round(ms) + ' ms/frame (' + (1000 / Math.max(ms, 1)).toFixed(1) + ' fps), bikes ' + bikes.length;
-  const text = viol.length ? 'ALERT: bina helmet bike sawar (' + viol.length + ')' : bikes.length ? 'Bike dikhi, helmet theek / dikh nahi raha' : 'Koi bike nahi dikhi';
+  const text = viol.length ? 'ALERT: bina helmet bike sawar (' + viol.length + ')' : bikes.length ? 'Bike dikhi, helmet theek / dikh nahi raha' : heads.length ? 'Sir dikhe (' + heads.length + '), koi bina-helmet nahi' : 'Koi sir / bike nahi dikha';
   return { r: { level: viol.length ? 'alert' : 'calm', alert: viol.length > 0, count: heads.length }, helmet: true, text, fresh, viol: viol.length, heads: heads.length, bikes: bikes.length };
 }
 function logViolation(bike, W, H) {
@@ -244,6 +246,7 @@ async function readPlate(canvas) {
 }
 // UI
 $('status').insertAdjacentHTML('afterend', '<p><label>Mode: <select id="mode"><option value="pose">Ladai / maar-peet (pose)</option><option value="helmet">Bina helmet bike + number plate</option></select></label></p>');
+$('far').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="hAny" checked> Helmet mode: bike na ho tab bhi bina-helmet sir par alert (test ke liye)</label></p>');
 $('mode').onchange = () => { if ($('mode').value === 'helmet') initHelmet().catch(() => {}); };
 document.body.insertAdjacentHTML('beforeend', '<div class="warn" style="font-size:13px"><b>Helmet + plate mode (private concept test):</b> helmet model = Smolry/Helmet-classifer (YOLO11s, AGPL-3.0, Roboflow-forked dataset). Bike detection = MediaPipe EfficientDet-Lite0 (Apache-2.0). Plate = OpenIPC/lpr-wasm (code MIT, model weights CC BY-NC 4.0, non-commercial). Pose = MediaPipe BlazePose (Apache-2.0). Models browser me download hote hain, tumhari video kahin nahi jaati. In licences ke saath ye bechne layak nahi, sirf private test. Plate padhna sirf paas, saaf, din ki roshni me chalega; door, tez, blur ya raat me galat/khali aayega.</div>');
 // ---- Extras: camera switch, photo input, traffic mode, evidence, light mode ----
