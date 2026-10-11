@@ -161,8 +161,8 @@ function handle(out) {
 function stopAll(msg) { try { stopSiren(0); } catch (e) {} running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
 $('start').onclick = async () => {
   unlockAudio(); if (running) return stopAll();
-  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: $('light').checked ? 640 : 1920 }, height: { ideal: $('light').checked ? 360 : 1080 } }, audio: false });
-    v.srcObject = stream; await v.play(); running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
+  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }, audio: false });
+    v.srcObject = stream; await v.play(); const track=stream.getVideoTracks()[0], caps=track.getCapabilities ? track.getCapabilities() : {}; if(caps.width && caps.height) {try {await track.applyConstraints({width:{ideal:Math.min(3840,caps.width.max)},height:{ideal:Math.min(2160,caps.height.max)}});}catch(e){}} running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
 $('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch (er) { setStatus('Ye video play nahi hua: ' + (er && er.message || er)); } e.target.value = ''; };
@@ -388,3 +388,5 @@ document.body.insertAdjacentHTML('beforeend', '<details class="warn" style="font
 const mediaStyle = document.createElement('style');
 mediaStyle.textContent = '#cam{position:relative} #cam>video{width:100%;height:auto;display:block} #cam>canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} #evl canvas,#log canvas{position:static;inset:auto;width:auto;height:auto;max-width:100%;display:block} #evl video{position:static;width:100%;height:auto}';
 document.head.append(mediaStyle);
+
+const resolutionInfo=document.createElement('p');resolutionInfo.id='captureInfo';resolutionInfo.style.cssText='font-size:13px;color:#444';$('cam').before(resolutionInfo);setInterval(()=>{if(!v.videoWidth)return;const settings=v.srcObject&&v.srcObject.getVideoTracks()[0]?.getSettings();resolutionInfo.textContent='Asli camera/video: '+v.videoWidth+' x '+v.videoHeight+(settings?.frameRate?' @ '+Math.round(settings.frameRate)+' fps':'')+'; AI crop/input alag hai. 4K request hai, browser jo dega wahi yahan dikhega.';},1000);
