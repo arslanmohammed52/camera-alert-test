@@ -249,7 +249,7 @@ async function readPlate(canvas) {
 }
 // UI
 $('status').insertAdjacentHTML('afterend', '<p><label>Mode: <select id="mode"><option value="pose">Ladai / maar-peet (pose)</option><option value="helmet">Bina helmet bike + number plate</option></select></label></p>');
-$('far').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="hAny" checked> Tez sir-test: bike verify nahi; sirf bina-helmet sir par alert. Road + plate ke liye ise band karo.</label></p>');
+$('far').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="hAny"> Sirf model-test (road alert nahi): bike ke bina sir dekho. Sadak ke liye ise OFF rakho.</label></p>');
 $('mode').onchange = () => { if ($('mode').value === 'helmet') initHelmet().catch(() => {}); };
 document.body.insertAdjacentHTML('beforeend', '<div class="warn" style="font-size:13px"><b>Helmet + plate mode (private concept test):</b> helmet model = Smolry/Helmet-classifer (YOLO11s, AGPL-3.0, Roboflow-forked dataset). Bike detection = MediaPipe EfficientDet-Lite0 (Apache-2.0). Plate = OpenIPC/lpr-wasm (code MIT, model weights CC BY-NC 4.0, non-commercial). Pose = MediaPipe BlazePose (Apache-2.0). Models browser me download hote hain, tumhari video kahin nahi jaati. In licences ke saath ye bechne layak nahi, sirf private test. Plate padhna sirf paas, saaf, din ki roshni me chalega; door, tez, blur ya raat me galat/khali aayega.</div>');
 // ---- Extras: camera switch, photo input, traffic mode, evidence, light mode ----
