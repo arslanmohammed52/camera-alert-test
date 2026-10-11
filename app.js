@@ -353,3 +353,4 @@ async function stepSchool() {
   return { r: { level: fight || phoneAlert ? 'alert' : 'calm', alert: fight || phoneAlert, count: s.r.count }, helmet: true, text, fresh };
 }
 const _step = window.__stepMode; window.__school = stepSchool;
+window.__test = { setDet: d => { phdet = d; }, school: stepSchool, reset: () => { phN = 0; phOn = false; poseOn = false; } };
