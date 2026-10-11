@@ -1,4 +1,4 @@
-let captureGeneration=0,lastOverlayAt=0;
+let captureGeneration=0,lastOverlayAt=0,nextDetectionAt=0;
 const LIMBS = [13, 14, 15, 16, 25, 26, 27, 28];
 const WRISTS = [15, 16], ANKLES = [27, 28];
 const vis = p => !!p && (p.v ?? 1) > 0.4;
@@ -142,11 +142,11 @@ function step(ts) {
   return { r, poses, ms };
 }
 function loop() {
-  const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy) return;
+  const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy || performance.now()<nextDetectionAt) return;
     if (v.ended) { stopAll('Clip khatam.'); return; }
     busy = true; let p; const tq = performance.now(),generation=captureGeneration;
     try { const md = $('mode').value; if (Date.now() - (window.__lastStep || 0) < Math.max($('light').checked ? 450 : 0, adaptiveGap)) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : md === 'school' ? stepSchool() : md === 'objects' ? stepObjects() : step(performance.now())); } catch (e) { busy = false; return; }
-    p.then(out => { busy = false; if (!out || generation!==captureGeneration || !running) {ctx.clearRect(0,0,o.width,o.height);return;} lastOverlayAt=Date.now(); autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
+    p.then(out => { busy = false; nextDetectionAt=performance.now()+Math.max(100,adaptiveGap); if (!out || generation!==captureGeneration || !running) {ctx.clearRect(0,0,o.width,o.height);return;} lastOverlayAt=Date.now(); autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
   };
   raf = requestAnimationFrame(tick);
 }
@@ -345,7 +345,7 @@ function rUpd() { const n = new Date(), d = n.getFullYear() + '-' + String(n.get
 for (const id of ['rOn', 'rFrom', 'rTo']) $(id).addEventListener('change', rUpd); { const r0 = getRule(); if (r0) { $('rOn').checked = r0.on; $('rFrom').value = r0.from; $('rTo').value = r0.to; } rUpd(); setInterval(rUpd, 30000); }
 function showS() { $('spanel').hidden = $('mode').value !== 'school'; } $('mode').addEventListener('change', showS); showS();
 let phdet = null, phN = 0, phOn = false, poseOn = false;
-async function initPh() { if (phdet) return; setStatus('Phone detector load ho raha hai...'); const M = window.__mpv, opt = d => ({ baseOptions: { modelAssetPath: EFFDET_URL, delegate: d }, runningMode: 'IMAGE', scoreThreshold: 0.3, maxResults: 25, categoryAllowlist: ['person', 'cell phone'] }); try { phdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('GPU')); } catch (e) { phdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('CPU')); } setStatus('School mode ready.'); }
+async function initPh() { if (phdet) return; setStatus('Phone detector load ho raha hai...'); const M = window.__mpv, opt = d => ({ baseOptions: { modelAssetPath: EFFDET_URL, delegate: d }, runningMode: 'IMAGE', scoreThreshold: 0.3, maxResults: 25, categoryAllowlist: ['person', 'cell phone'] }); phdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('CPU')); setStatus('School mode ready.'); }
 async function stepSchool() {
   if (!phdet) await initPh(); if (v.readyState < 2 || !v.videoWidth) return null;
   const s = step(performance.now()); const W = v.videoWidth, H = v.videoHeight; let fresh = false;
@@ -418,3 +418,5 @@ const hiddenFix=document.createElement('style');hiddenFix.textContent='[hidden]{
 document.querySelector('h1').textContent='Camera Guard - demo v1';document.title='Camera Guard demo';document.querySelector('h1').nextElementSibling.textContent='Phone par live camera aur detection boxes. Person/cheez labels, road, helmet aur school mode alag chun sakte ho. Video upload nahi hota. Yeh test demo hai: har alert insaan verify kare.';
 const existingGuides=[...document.querySelectorAll('details.warn')];for(const g of existingGuides)if(g.textContent.includes('Camera kahan'))g.remove();
 document.body.insertAdjacentHTML('beforeend','<details class="warn"><summary>Demo ki seema aur test ka tarika</summary><p>Person + cheez mode me pehle phone paas se dikhao, phir dheere door le jao. Box aur label ko khud check karo. Phone, bag, bottle, umbrella, book, knife/scissors model categories hain; sab ki real-camera testing poori nahi hui. Paas ka matlab haath me hona pakka nahi.</p><p>4K request hai, guarantee nahi. Asli resolution upar dikhti hai. Auto mode slow phone par AI ko halka karta hai aur zaroorat par capture kam karta hai. Chhoti/door cheez blur ya kam pixels me miss ho sakti hai.</p><p>Road car/bike classification abhi test hai, kuch bikes cycle aur van bus aa sakti hai. Speed ke liye fixed camera aur measured-distance calibration chahiye. Helmet alert sirf detected motorcycle se association par; ghar me bare-head test default band hai.</p><p>Evidence isi browser me photo aur supported camera par clip rakhta hai. Clip fail ho to photo-only dikhega. Browser storage clear hone par evidence mit sakta hai. Phone chhoot sirf phone alert par hai, movement alert par nahi.</p><p>Automatic challan, theft/intent proof, sab cameras par guaranteed smoothness, raat/blur reliability aur sale/licensing clearance is demo ka claim nahi.</p></details>');
+
+$('mode').addEventListener('change',()=>{captureGeneration++;ctx.clearRect(0,0,o.width,o.height);$('badge').hidden=true;});
