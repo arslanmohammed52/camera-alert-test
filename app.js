@@ -230,7 +230,7 @@ async function stepHelmet() {
   return { r: { level: viol.length ? 'alert' : 'calm', alert: viol.length > 0, count: heads.length }, helmet: true, text, fresh, viol: viol.length, heads: heads.length, bikes: bikes.length };
 }
 function logViolation(bike, W, H, headTest = false) {
-  addEvidence(headTest ? 'Bina helmet sir (test, bike verify nahi)' : 'Bina helmet bike sawar', bike);
+  addEvidence(headTest ? 'Bina helmet sir (test, bike verify nahi)' : 'Bina helmet bike sawar', bike, headTest);
   if (headTest) return;
   const pw = (bike.x2 - bike.x1), ph = (bike.y2 - bike.y1), x = Math.max(0, bike.x1 - pw * 0.25), y = Math.max(0, bike.y1 - ph * 0.9), w = Math.min(W - x, pw * 1.5), h = Math.min(H - y, ph * 1.9);
   const c = document.createElement('canvas'); const sc = Math.min(2.5, Math.max(1, 640 / w)); c.width = Math.round(w * sc); c.height = Math.round(h * sc); c.getContext('2d').drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
@@ -382,3 +382,8 @@ let pend = null;
 $('nlpB').onclick = () => { const o = parsePrincipal($('nlpT').value); pend = null; $('nlpY').hidden = true; if (!o.ok) { $('nlpR').textContent = o.reason; return; } pend = o; $('nlpR').textContent = 'Maine samjha: phone par alert band ' + o.from + '-' + o.to + ' (' + o.date + '). Baaki sab alert chalu.' + (o.notes.length ? ' [' + o.notes.join('; ') + ']' : '') + ' Sahi hai?'; $('nlpY').hidden = false; };
 $('nlpY').onclick = () => { if (!pend) return; localStorage.setItem('phoneRule', JSON.stringify({ on: true, from: pend.from, to: pend.to, date: pend.date })); $('rOn').checked = true; $('rFrom').value = pend.from; $('rTo').value = pend.to; $('nlpY').hidden = true; $('nlpR').textContent = 'Lagu ho gaya.'; pend = null; rUpd(); };
 document.body.insertAdjacentHTML('beforeend', '<details class="warn" style="font-size:13px"><summary><b>Camera kahan lagayein / roshni (zaroori)</b></summary><ul><li>Helmet: sir kam se kam ~60-80 px ooncha dikhe; side/saamne se thoda upar se. Bahut door ya seedha upar se nahi chalega.</li><li>Number plate: plate khud ~130x70 px ho; camera 3-6 m door, 30 degree se kam angle, chamak (glare) nahi.</li><li>Speed: camera fixed, seedhi sadak, 2 line (jaise 5 m) calibrate karo; camera hile to dobara.</li><li>Ladai / phone: log 120+ px ooche dikhein, 2.5-3.5 m ooncha, khidki ki taraf peeth (backlight) nahi.</li><li>Din / achhi roshni me test hua hai. Raat, baarish, blur, IR (kala-safed) me zyada galti hogi, test nahi hua.</li><li>Har alert ke saath photo + 10 sec clip banti hai: pehle insaan dekhe, phir action.</li></ul></details>');
+
+// Scope media layout to the camera. Evidence canvases must not overlay the page.
+const mediaStyle = document.createElement('style');
+mediaStyle.textContent = '#cam{position:relative} #cam>video{width:100%;height:auto;display:block} #cam>canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none} #evl canvas,#log canvas{position:static;inset:auto;width:auto;height:auto;max-width:100%;display:block} #evl video{position:static;width:100%;height:auto}';
+document.head.append(mediaStyle);
