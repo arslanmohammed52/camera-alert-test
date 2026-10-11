@@ -1,0 +1,6 @@
+YOLOX Nano pretrained COCO object detector
+Copyright (c) Megvii, Inc. and its affiliates.
+Source: https://github.com/Megvii-BaseDetection/YOLOX
+Model: https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx
+License: Apache License 2.0, included in 2-YOLOX-LICENSE.txt.
+Original pretrained model downloaded unchanged. Browser preprocessing and inference integration are separate demo code. No private training data or private fine-tuned weights are included.
