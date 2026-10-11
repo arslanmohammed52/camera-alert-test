@@ -60,8 +60,9 @@ const LABEL = { none: 'Koi insaan nahi dikha', calm: 'Shaant', active: 'Koi tez 
 const det = new Detector(); let pl = null, stream = null, raf = 0, running = false, busy = false, al = { on: false, start: 0, cool: 0 };
 const v = $('v'), o = $('o'), ctx = o.getContext('2d'); const tile = document.createElement('canvas'), tctx = tile.getContext('2d');
 function setStatus(t) { $('status').textContent = t; }
-$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far"> Door ke log mode (zyada tiles, thoda slow)</label></p><p><label><input type="checkbox" id="deep"> Bahut door (9 tiles, bahut slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="40" value="10"></label><p id="fps" style="color:#666"></p>');
+$('sens').parentElement.insertAdjacentHTML('afterend', '<p><label><input type="checkbox" id="far"> Door ke log mode (zyada tiles, thoda slow)</label></p><p><label><input type="checkbox" id="deep"> Bahut door (9 tiles, bahut slow)</label></p><label>Zoom: <span id="zv">1.0x</span><input id="zoom" type="range" min="10" max="60" value="10"></label><p style="color:#666;font-size:13px">Door ke liye: zoom 3x-4x karo (ya 2 ungli se pinch). Jis ko dekhna hai use peele dabbe ke beech me rakho. ~15 m par 3x-4x chahiye.</p><p id="fps" style="color:#666"></p>');
 $('zoom').oninput = () => { $('zv').textContent = (+$('zoom').value / 10).toFixed(1) + 'x'; };
+{ let d0 = 0, z0 = 10; const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); o.addEventListener('touchstart', e => { if (e.touches.length === 2) { d0 = dist(e.touches); z0 = +$('zoom').value; } }, { passive: true }); o.addEventListener('touchmove', e => { if (e.touches.length === 2 && d0) { $('zoom').value = Math.max(10, Math.min(60, Math.round(z0 * dist(e.touches) / d0))); $('zoom').oninput(); e.preventDefault(); } }, { passive: false }); o.addEventListener('touchend', () => { d0 = 0; }); }
 async function init() {
   try {
     setStatus('Model load ho raha hai (10-20 sec)...');
@@ -160,7 +161,7 @@ function handle(out) {
 function stopAll(msg) { try { stopSiren(0); } catch (e) {} running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
 $('start').onclick = async () => {
   unlockAudio(); if (running) return stopAll();
-  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: $('light').checked ? 640 : 1280 }, height: { ideal: $('light').checked ? 360 : 720 } }, audio: false });
+  try { stopAll(); stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: $('front').checked ? 'user' : 'environment', width: { ideal: $('light').checked ? 640 : 1920 }, height: { ideal: $('light').checked ? 360 : 1080 } }, audio: false });
     v.srcObject = stream; await v.play(); running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
@@ -216,6 +217,7 @@ async function stepHelmet() {
     if (bike) (h.no ? viol : ok).push({ h, bike }); else other.push(h); }
   if ($('hAny').checked) { for (const h of other.splice(0)) { const w = h.x2 - h.x1, hh = h.y2 - h.y1, fb = { x1: h.x1 - w, x2: h.x2 + w, y1: h.y1, y2: h.y2 + 3 * hh, s: h.s }; (h.no ? viol : ok).push({ h, bike: fb }); } }
   ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(14, W / 40) + 'px sans-serif';
+  if (zoom > 1) { ctx.strokeStyle = '#ffd60a'; ctx.setLineDash([10, 6]); ctx.strokeRect(rx, ry, rw, rh); ctx.setLineDash([]); }
   ctx.strokeStyle = '#ffd60a'; for (const b of bikes) ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
   ctx.setLineDash([6, 6]); ctx.strokeStyle = '#999'; for (const h of other) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1); ctx.setLineDash([]);
   ctx.strokeStyle = '#34c759'; for (const { h } of ok) ctx.strokeRect(h.x1, h.y1, h.x2 - h.x1, h.y2 - h.y1);
