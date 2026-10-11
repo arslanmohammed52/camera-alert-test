@@ -1,3 +1,4 @@
+let captureGeneration=0,lastOverlayAt=0;
 const LIMBS = [13, 14, 15, 16, 25, 26, 27, 28];
 const WRISTS = [15, 16], ANKLES = [27, 28];
 const vis = p => !!p && (p.v ?? 1) > 0.4;
@@ -127,7 +128,7 @@ function beep() { try { navigator.vibrate && navigator.vibrate([500, 150, 500, 1
 }
 function step(ts) {
   if (v.readyState < 2 || !v.videoWidth) return null;
-  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; }
+  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W || o.height !== H) { o.width = W; o.height = H; }
   const zoom = +$('zoom').value / 10, far = $('far').checked && !$('light').checked;
   const t0 = performance.now(); const people = detectAll(W, H, zoom, far); const ms = performance.now() - t0;
   const poses = people.map(p => p.pts.map(q => ({ x: q.x, y: q.y, v: q.v })));
@@ -143,9 +144,9 @@ function step(ts) {
 function loop() {
   const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy) return;
     if (v.ended) { stopAll('Clip khatam.'); return; }
-    busy = true; let p; const tq = performance.now();
-    try { const md = $('mode').value; if (Date.now() - (window.__lastStep || 0) < Math.max($('light').checked ? 450 : 0, adaptiveGap)) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : md === 'school' ? stepSchool() : step(performance.now())); } catch (e) { busy = false; return; }
-    p.then(out => { busy = false; if (!out) return; autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
+    busy = true; let p; const tq = performance.now(),generation=captureGeneration;
+    try { const md = $('mode').value; if (Date.now() - (window.__lastStep || 0) < Math.max($('light').checked ? 450 : 0, adaptiveGap)) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : md === 'school' ? stepSchool() : md === 'objects' ? stepObjects() : step(performance.now())); } catch (e) { busy = false; return; }
+    p.then(out => { busy = false; if (!out || generation!==captureGeneration || !running) {ctx.clearRect(0,0,o.width,o.height);return;} lastOverlayAt=Date.now(); autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
   };
   raf = requestAnimationFrame(tick);
 }
@@ -158,13 +159,13 @@ function handle(out) {
   $('cam').className = 'cam ' + (lvl === 'alert' ? 'alert' : '');
   $('badge').textContent = out.text || (LABEL[lvl] + (r.count ? ' (' + r.count + ' log)' : '')); $('badge').hidden = false;
 }
-function stopAll(msg) { try { stopSiren(0); } catch (e) {} running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
+function stopAll(msg) { captureGeneration++; try { stopSiren(0); } catch (e) {} running = false; cancelAnimationFrame(raf); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } v.pause(); v.srcObject = null; det.reset(); al = { on: false, start: 0, cool: 0 }; $('badge').hidden = true; $('cam').className = 'cam'; $('start').textContent = 'Camera start karo'; setStatus(msg || 'Band.'); }
 $('start').onclick = async () => {
   unlockAudio(); if (running) return stopAll();
   try { stopAll(); stream = await openAdaptiveCamera(); v.srcObject = stream; await v.play(); resetCameraAdaptation(); running = true; $('start').textContent = 'Band karo'; setStatus('Chal raha hai. Video kahin upload nahi ho raha.'); loop();
   } catch (e) { setStatus('Camera nahi khula: ' + (e.name || e) + '. Chrome me Allow dabao.'); }
 };
-$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch (er) { setStatus('Ye video play nahi hua: ' + (er && er.message || er)); } e.target.value = ''; };
+$('file').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); cameraNote='uploaded video'; v.src = URL.createObjectURL(f); v.muted = true; v.loop = false; try { await v.play(); running = true; setStatus('Clip chal rahi hai...'); loop(); } catch (er) { setStatus('Ye video play nahi hua: ' + (er && er.message || er)); } e.target.value = ''; };
 $('sens').parentElement.insertAdjacentHTML('afterend', '<p><button id="tsiren" type="button">Siren test (volume max karo)</button></p>'); $('tsiren').onclick = () => { unlockAudio(); stopSiren(0); setTimeout(beep, 150); };
 window.__step = step; window.__det = det; window.__v = v;
 
@@ -205,7 +206,7 @@ async function runHelmet(P, W, H, conf) {
 async function stepHelmet() {
   if (!hsess) { await initHelmet(); }
   if (v.readyState < 2 || !v.videoWidth) return null;
-  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; }
+  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W || o.height !== H) { o.width = W; o.height = H; }
   const zoom = +$('zoom').value / 10, far = $('far').checked && !$('light').checked, t0 = performance.now();
   const rw = W / zoom, rh = H / zoom, rx = (W - rw) / 2, ry = (H - rh) / 2, regs = [{ x: rx, y: ry, w: rw, h: rh }];
   if (far) for (const ix of [0, 1]) for (const iy of [0, 1]) regs.push({ x: rx + ix * rw * 0.4, y: ry + iy * rh * 0.4, w: rw * 0.6, h: rh * 0.6 });
@@ -274,13 +275,13 @@ const CLS = { car: 'car', truck: 'truck', bus: 'bus', motorcycle: 'bike', bicycl
 function iou(a, b) { const x = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)), y = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)), i = x * y; return i / ((a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - i + 1e-6); }
 async function stepTraffic() {
   if (!vdet) await initTraffic(); if (v.readyState < 2 || !v.videoWidth) return null;
-  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W) { o.width = W; o.height = H; } const t0 = performance.now(), now = t0 / 1000;
+  const W = v.videoWidth, H = v.videoHeight; if (o.width !== W || o.height !== H) { o.width = W; o.height = H; } const t0 = performance.now(), now = t0 / 1000;
   const dets = vdet.detect(v).detections.map(d => ({ x1: d.boundingBox.originX, y1: d.boundingBox.originY, x2: d.boundingBox.originX + d.boundingBox.width, y2: d.boundingBox.originY + d.boundingBox.height, cls: d.categories[0].categoryName, s: d.categories[0].score }));
   const used = new Set();
   for (const d of dets) { let best = null, bs = 0.15; for (const t of tracks) { if (used.has(t)) continue; const s = iou(d, t.box); const dd = Math.hypot((d.x1 + d.x2 - t.box.x1 - t.box.x2) / 2, (d.y1 + d.y2 - t.box.y1 - t.box.y2) / 2) / Math.max(d.x2 - d.x1, 1); const sc = s + (dd < 0.8 ? 0.15 : 0); if (sc > bs) { bs = sc; best = t; } }
     if (!best) { best = { id: nextTid++, hist: [], miss: 0, over: false, spd: null }; tracks.push(best); } used.add(best); best.box = d; best.cls = d.cls; best.miss = 0; best.hist.push({ t: now, x: (d.x1 + d.x2) / 2, y: d.y2 }); while (best.hist.length > 40) best.hist.shift(); }
   for (let i = tracks.length - 1; i >= 0; i--) { if (!used.has(tracks[i]) && ++tracks[i].miss > 6) tracks.splice(i, 1); }
-  ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(14, W / 45) + 'px sans-serif'; const lim = +$('lim').value || 40; let over = 0, fresh = false;
+  ctx.clearRect(0, 0, W, H); ctx.lineWidth = Math.max(2, W / 250); ctx.font = Math.max(16, W / 38) + 'px sans-serif'; const lim = +$('lim').value || 40; let over = 0, fresh = false;
   for (const c of cals) if (c) { ctx.strokeStyle = '#ffd60a'; ctx.beginPath(); ctx.moveTo(c.p[0].x, c.p[0].y); ctx.lineTo(c.p[1].x, c.p[1].y); ctx.stroke(); }
   for (const t of tracks) { if (t.miss) continue; const h = t.hist, last = h[h.length - 1]; const sp = cals.some(Boolean) ? trackSpeed(h) : null; if (sp != null) { t.sps = (t.sps || []).concat(sp).slice(-7); const m = t.sps.slice().sort((x, y) => x - y)[t.sps.length >> 1]; t.spd = t.spd == null ? m : 0.7 * t.spd + 0.3 * m; }
     const L = $('govt').checked ? GOVT[t.cls] || lim : lim, ov = t.spd != null && t.spd > L && (t.sps || []).length >= 4 && last.t - h[0].t > 1.5; if (ov) { over++; if (!t.over) { t.over = true; fresh = true; addEvidence('Overspeed ' + Math.round(t.spd) + ' km/h (limit ' + L + ')', t.box, true); } }
@@ -320,7 +321,7 @@ let wl = null; async function wake() { try { if (navigator.wakeLock && running) 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
 $('flip').onclick = async () => { $('front').checked = !$('front').checked; if (stream) { running = false; $('start').click(); await new Promise(r => setTimeout(r, 300)); $('start').click(); } else setStatus('Camera ' + ($('front').checked ? 'front' : 'back') + ' select hua. Start dabao.'); };
 let phT = 0; $('photo').onchange = async e => { const f = e.target.files[0]; if (!f) return; unlockAudio(); stopAll(); const img = new Image(); img.src = URL.createObjectURL(f); try { await img.decode(); } catch (er) { setStatus('Photo khul nahi payi.'); return; }
-  const c2 = document.createElement('canvas'), s = Math.min(1, 1280 / Math.max(img.width, img.height)); c2.width = Math.round(img.width * s); c2.height = Math.round(img.height * s); const g = c2.getContext('2d'); const draw = () => g.drawImage(img, 0, 0, c2.width, c2.height); draw(); clearInterval(phT); phT = setInterval(draw, 400); v.srcObject = c2.captureStream(3); v.muted = true; await v.play(); running = true; setStatus('Photo analyse ho rahi hai (stop karne ko Band karo).'); $('start').textContent = 'Band karo'; loop(); e.target.value = ''; };
+  const c2 = document.createElement('canvas'), s = Math.min(1, 1280 / Math.max(img.width, img.height)); c2.width = Math.round(img.width * s); c2.height = Math.round(img.height * s); const g = c2.getContext('2d'); const draw = () => g.drawImage(img, 0, 0, c2.width, c2.height); draw(); clearInterval(phT); phT = setInterval(draw, 400); cameraNote='photo test'; v.srcObject = c2.captureStream(3); v.muted = true; await v.play(); running = true; setStatus('Photo analyse ho rahi hai (stop karne ko Band karo).'); $('start').textContent = 'Band karo'; loop(); e.target.value = ''; };
 const _stop = stopAll; stopAll = function (m) { clearInterval(phT); clearInterval(cameraWatch); _stop(m); }; const _start = $('start').onclick; $('start').onclick = async () => { await _start(); wake(); if ($('light').checked) setStatus('Light mode on: kam resolution/fps.'); };
 
 $('light').parentElement.insertAdjacentHTML('afterend', '<br><label><input type="checkbox" id="auto" checked> Auto mode (device check karke best setting khud chune)</label> <span id="autost" style="font-size:13px;color:#555"></span>');
@@ -392,8 +393,23 @@ document.head.append(mediaStyle);
 const resolutionInfo=document.createElement('p');resolutionInfo.id='captureInfo';resolutionInfo.style.cssText='font-size:13px;color:#444';$('cam').before(resolutionInfo);setInterval(()=>{if(!v.videoWidth)return;const settings=v.srcObject&&v.srcObject.getVideoTracks()[0]?.getSettings();resolutionInfo.textContent='Asli camera/video: '+v.videoWidth+' x '+v.videoHeight+(settings?.frameRate?' @ '+Math.round(settings.frameRate)+' fps':'')+'; AI crop/input alag hai. '+cameraNote;},1000);
 
 // Capture stays separate from AI input. Lower capture only after sustained slow operation.
-let adaptiveGap=0,cameraLevel=0,lastCameraStep=0,cameraChanging=false,cameraNote='checking',cameraWatch=0,videoLastTime=-1,stallN=0;
+let adaptiveGap=0,cameraLevel=0,lastCameraStep=0,cameraChanging=false,cameraNote='source selected',cameraWatch=0,videoLastTime=-1,stallN=0;
 const captureLevels=[[3840,2160,30],[1920,1080,24],[1280,720,20],[640,480,15]];
 async function openAdaptiveCamera(){let last;for(let i=0;i<captureLevels.length;i++){const [w,h,f]=captureLevels[i];try{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:$('front').checked?'user':'environment'},width:{ideal:w},height:{ideal:h},frameRate:{ideal:f,max:30}},audio:false});cameraLevel=i;cameraNote=i?'startup fallback':'up to 4K requested';return st;}catch(e){last=e;if(!['OverconstrainedError','NotReadableError','AbortError'].includes(e.name))throw e;}}throw last;}
 function resetCameraAdaptation(){lastCameraStep=Date.now();videoLastTime=-1;stallN=0;clearInterval(cameraWatch);cameraWatch=setInterval(()=>{if(!running||!stream||document.hidden)return;if(v.currentTime===videoLastTime)stallN++;else stallN=0;videoLastTime=v.currentTime;if(stallN>=4){stallN=0;lowerCameraCapture('camera frames stalled');}},1500);}
 async function lowerCameraCapture(reason){if(cameraChanging||!stream||cameraLevel>=captureLevels.length-1||!$('auto').checked)return;const track=stream.getVideoTracks()[0],cur=track.getSettings();let next=cameraLevel+1;while(next<captureLevels.length-1 && cur.width<=captureLevels[next][0] && cur.height<=captureLevels[next][1])next++;cameraChanging=true;lastCameraStep=Date.now();const [w,h,f]=captureLevels[next];try{await track.applyConstraints({width:{ideal:w,max:w},height:{ideal:h,max:h},frameRate:{ideal:f,max:f}});if(!running || track.readyState==='ended')return;cameraLevel=next;cameraNote='auto fallback: '+reason;setStatus('Auto: '+reason+'; camera halka kiya. Chhoti/door cheez ki detail kam ho sakti hai.');}catch(e){if(!running || track.readyState==='ended')return;cameraLevel=next;cameraNote='capture unchanged; AI slowed';}finally{cameraChanging=false;}}
+
+// Person and visible object labels. Proximity never means ownership or intent.
+$('mode').insertAdjacentHTML('beforeend','<option value="objects">Person + cheez labels (test)</option>');
+let objectDetector=null,objectReady=null;
+const objectClasses=['person','cell phone','backpack','handbag','suitcase','bottle','cup','umbrella','knife','scissors','book'];
+async function initObjects(){if(objectReady)return objectReady;objectReady=(async()=>{const M=window.__mpv,opt=d=>({baseOptions:{modelAssetPath:EFFDET_URL,delegate:d},runningMode:'IMAGE',scoreThreshold:.35,maxResults:40,categoryAllowlist:objectClasses});objectDetector=await M.ObjectDetector.createFromOptions(window.__fs,opt('CPU'));})();return objectReady;}
+const objectCanvas=document.createElement('canvas'),objectCtx=objectCanvas.getContext('2d');
+function detectionLabel(b,text,color,W,H){const font=Math.max(16,W/38),pad=W/150;ctx.font='600 '+font+'px sans-serif';ctx.lineWidth=Math.max(2,W/250);ctx.strokeStyle=color;const x=Math.max(0,Math.min(W,b.x1)),y=Math.max(0,Math.min(H,b.y1));ctx.strokeRect(x,y,Math.min(W-x,b.x2-x),Math.min(H-y,b.y2-y));const tw=Math.min(W,ctx.measureText(text).width+pad*2),lh=font*1.35,tx=Math.min(x,W-tw),ty=Math.max(0,y-lh);ctx.fillStyle=color;ctx.fillRect(tx,ty,tw,lh);ctx.fillStyle='#fff';ctx.fillText(text,tx+pad,ty+font,tw-pad*2);}
+async function stepObjects(){await initObjects();if(v.readyState<2||!v.videoWidth)return null;const W=v.videoWidth,H=v.videoHeight,t0=performance.now(),z=Math.max(1,+$('zoom').value/10),rw=W/z,rh=H/z,rx=(W-rw)/2,ry=(H-rh)/2,scale=Math.min(1,1280/rw);objectCanvas.width=Math.round(rw*scale);objectCanvas.height=Math.round(rh*scale);objectCtx.drawImage(v,rx,ry,rw,rh,0,0,objectCanvas.width,objectCanvas.height);const ds=objectDetector.detect(objectCanvas).detections.map(d=>({x1:rx+d.boundingBox.originX/scale,y1:ry+d.boundingBox.originY/scale,x2:rx+(d.boundingBox.originX+d.boundingBox.width)/scale,y2:ry+(d.boundingBox.originY+d.boundingBox.height)/scale,cls:d.categories[0].categoryName}));if(o.width!==W||o.height!==H){o.width=W;o.height=H;}ctx.clearRect(0,0,W,H);const pe=ds.filter(d=>d.cls==='person');for(const d of ds){let name=d.cls==='cell phone'?'phone':d.cls;if(d.cls!=='person' && pe.some(q=>iou(d,q)>0 || ((d.x1+d.x2)/2>q.x1 && (d.x1+d.x2)/2<q.x2 && (d.y1+d.y2)/2>q.y1 && (d.y1+d.y2)/2<q.y2)))name+=' (person ke paas)';detectionLabel(d,name,d.cls==='person'?'#126431':'#915600',W,H);}window.__objectDets=ds;const ms=performance.now()-t0;$('fps').textContent='Labels: '+Math.round(ms)+' ms/frame. Paas = haath me hona pakka nahi.';return {r:{level:'calm',alert:false},helmet:true,text:ds.length?'Person '+pe.length+', cheez '+(ds.length-pe.length):'Koi supported cheez nahi mili'};}
+
+const phoneStyle=document.createElement('style');phoneStyle.textContent='#cam{min-height:0}#cam video{width:100%;height:auto;display:block}#cam canvas{width:100%;height:100%;position:absolute;inset:0}#badge{font-size:14px;line-height:1.3;max-height:64px;overflow:hidden}#captureInfo{overflow-wrap:anywhere}';document.head.append(phoneStyle);
+
+setInterval(()=>{if(running && Date.now()-lastOverlayAt>800){ctx.clearRect(0,0,o.width,o.height);if($('badge'))$('badge').hidden=true;}},200);
+
+const hiddenFix=document.createElement('style');hiddenFix.textContent='[hidden]{display:none!important}';document.head.append(hiddenFix);
