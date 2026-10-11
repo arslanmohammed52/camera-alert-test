@@ -143,7 +143,7 @@ function loop() {
   const tick = () => { raf = requestAnimationFrame(tick); if (!running || busy) return;
     if (v.ended) { stopAll('Clip khatam.'); return; }
     busy = true; let p; const tq = performance.now();
-    try { const md = $('mode').value; if ($('light').checked && Date.now() - (window.__lastStep || 0) < 450) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : step(performance.now())); } catch (e) { busy = false; return; }
+    try { const md = $('mode').value; if ($('light').checked && Date.now() - (window.__lastStep || 0) < 450) { busy = false; return; } window.__lastStep = Date.now(); p = Promise.resolve(md === 'helmet' ? stepHelmet() : md === 'traffic' ? stepTraffic() : md === 'school' ? stepSchool() : step(performance.now())); } catch (e) { busy = false; return; }
     p.then(out => { busy = false; if (!out) return; autoTune(performance.now() - tq); handle(out); }).catch(e => { busy = false; window.__lastErr = String(e); setStatus('Error: ' + (e && e.message || e)); });
   };
   raf = requestAnimationFrame(tick);
@@ -326,3 +326,30 @@ function autoTune(ms) { if (!$('auto').checked) return; aEma = aN++ ? 0.8 * aEma
 const _start2 = $('start').onclick; $('start').onclick = async () => { if ($('auto').checked && !running) { aN = 0; const b = benchDevice(); $('light').checked = b > 25; if (b > 25) $('light').dataset.auto = 1; $('autost').textContent = 'Auto: benchmark ' + b.toFixed(0) + ' ms -> ' + (b > 25 ? 'Light mode (chhota resolution)' : 'Full quality') + '; lag aaye to khud kam karega'; } await _start2(); };
 
 init();
+// ---- School mode: fight(pose) + phone use, with principal exemption window (phone ONLY; fight etc. stay active) ----
+function exemptNow(rule, now) { if (!rule || !rule.on || !rule.from || !rule.to) return false; now = now || new Date(); const d = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0'); const m = now.getHours() * 60 + now.getMinutes(), f = rule.from.split(':'), t = rule.to.split(':'), a = +f[0] * 60 + +f[1], b = +t[0] * 60 + +t[1];
+  if (a <= b) return rule.date === d && m >= a && m < b; const y = new Date(now.getTime() - 864e5), yd = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0'); return (rule.date === d && m >= a) || (rule.date === yd && m < b); }
+window.__exemptNow = exemptNow;
+function getRule() { try { return JSON.parse(localStorage.getItem('phoneRule') || 'null'); } catch (e) { return null; } }
+$('mode').insertAdjacentHTML('beforeend', '<option value="school">School: ladai + phone (principal chhoot)</option>');
+$('tpanel').insertAdjacentHTML('afterend', '<div id="spanel" hidden style="background:#fff;padding:10px;border-radius:8px;margin:8px 0"><b>Principal: phone chhoot (sirf phone)</b><br><label><input type="checkbox" id="rOn"> Phone use allowed (alert band)</label><br><label>Se <input type="time" id="rFrom" value="10:00"></label> <label>Tak <input type="time" id="rTo" value="13:00"></label> <small>(aaj ke din ke liye)</small><p id="rSt" style="margin:6px 0;font-size:13px"></p><small>Chhoot sirf phone par lagti hai. Ladai / maar-peet ka alert hamesha chalu rehta hai, phone haath me ho tab bhi.</small></div>');
+function rUpd() { const n = new Date(), d = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0'); const rule = { on: $('rOn').checked, from: $('rFrom').value, to: $('rTo').value, date: d }; localStorage.setItem('phoneRule', JSON.stringify(rule)); $('rSt').textContent = !rule.on ? 'Chhoot band: phone use par alert aayega.' : exemptNow(rule) ? 'Chhoot ABHI chalu (' + rule.from + '-' + rule.to + '): phone par alert nahi.' : 'Chhoot set hai (' + rule.from + '-' + rule.to + ') par abhi is waqt nahi: phone par alert aayega.'; }
+for (const id of ['rOn', 'rFrom', 'rTo']) $(id).addEventListener('change', rUpd); { const r0 = getRule(); if (r0) { $('rOn').checked = r0.on; $('rFrom').value = r0.from; $('rTo').value = r0.to; } rUpd(); setInterval(rUpd, 30000); }
+function showS() { $('spanel').hidden = $('mode').value !== 'school'; } $('mode').addEventListener('change', showS); showS();
+let phdet = null, phN = 0, phOn = false, poseOn = false;
+async function initPh() { if (phdet) return; setStatus('Phone detector load ho raha hai...'); const M = window.__mpv, opt = d => ({ baseOptions: { modelAssetPath: EFFDET_URL, delegate: d }, runningMode: 'IMAGE', scoreThreshold: 0.3, maxResults: 25, categoryAllowlist: ['person', 'cell phone'] }); try { phdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('GPU')); } catch (e) { phdet = await M.ObjectDetector.createFromOptions(window.__fs, opt('CPU')); } setStatus('School mode ready.'); }
+async function stepSchool() {
+  if (!phdet) await initPh(); if (v.readyState < 2 || !v.videoWidth) return null;
+  const s = step(performance.now()); const W = v.videoWidth, H = v.videoHeight; let fresh = false;
+  const dets = phdet.detect(v).detections.map(d => ({ x1: d.boundingBox.originX, y1: d.boundingBox.originY, x2: d.boundingBox.originX + d.boundingBox.width, y2: d.boundingBox.originY + d.boundingBox.height, cls: d.categories[0].categoryName }));
+  const ph = dets.filter(d => d.cls === 'cell phone'), pe = dets.filter(d => d.cls === 'person');
+  const near = ph.filter(p => pe.some(q => { const cx = (p.x1 + p.x2) / 2, cy = (p.y1 + p.y2) / 2, w = q.x2 - q.x1, h = q.y2 - q.y1; return cx > q.x1 - 0.1 * w && cx < q.x2 + 0.1 * w && cy > q.y1 - 0.1 * h && cy < q.y1 + 0.75 * h; }));
+  phN = near.length ? phN + 1 : Math.max(0, phN - 1); const ex = exemptNow(getRule()), phoneAlert = phN >= 3 && !ex;
+  for (const p of ph) { ctx.lineWidth = Math.max(2, W / 250); ctx.strokeStyle = ex ? '#0a84ff' : '#ff9f0a'; ctx.strokeRect(p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1); }
+  if (phoneAlert && !phOn) { phOn = true; fresh = true; addEvidence('Phone use', near[0], true); } if (!phoneAlert && phN === 0) phOn = false;
+  const fight = !!s.r.alert; if (fight && !poseOn) { poseOn = true; fresh = true; addEvidence('Maar-peet jaisi movement (pose alert)', null, true); } if (!fight && !s.r.alert) poseOn = fight;
+  const text = fight ? 'ALERT: maar-peet jaisi movement' : phoneAlert ? 'ALERT: phone use' : ex && phN >= 3 ? 'Phone chhoot chalu - alert nahi' : 'Sab theek';
+  $('fps').textContent = 'School: phone ' + ph.length + ', log ' + pe.length + (ex ? ' (phone chhoot ON)' : '');
+  return { r: { level: fight || phoneAlert ? 'alert' : 'calm', alert: fight || phoneAlert, count: s.r.count }, helmet: true, text, fresh };
+}
+const _step = window.__stepMode; window.__school = stepSchool;
